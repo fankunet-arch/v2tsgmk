@@ -1,6 +1,7 @@
 /**
  * Toptea HQ - JavaScript for RMS Global Rules (Layer 2)
- * Engineer: Gemini | Date: 2025-11-02 | Revision: 1.1 (Path Fix)
+ * Engineer: Gemini | Date: 2025-11-02
+ * Revision: 2.0 (Added Base Quantity Conditions)
  */
 $(document).ready(function() {
     
@@ -58,6 +59,11 @@ $(document).ready(function() {
                     $('#cond_ice_id').val(rule.cond_ice_id);
                     $('#cond_sweet_id').val(rule.cond_sweet_id);
                     $('#cond_material_id').val(rule.cond_material_id);
+                    
+                    // ★★★ 新增字段 START ★★★
+                    $('#cond_base_gt').val(rule.cond_base_gt);
+                    $('#cond_base_lte').val(rule.cond_base_lte);
+                    // ★★★ 新增字段 END ★★★
                     
                     actionTypeSelect.val(rule.action_type);
                     $('#action_material_id').val(rule.action_material_id);

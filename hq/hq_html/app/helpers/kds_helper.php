@@ -2,7 +2,7 @@
 /**
  * Toptea HQ - cpsys
  * KDS Data Helper Functions
- * Engineer: Gemini | Date: 2025-11-02 | Revision: 14.0 (RMS V2.2 - Gating Logic)
+ * Engineer: Gemini | Date: 2025-11-02 | Revision: 14.1 (RMS V2.2 - Gating Logic & CRITICAL SQL FIX)
  */
 
 // --- RMS: New Functions for Dynamic Recipe Engine ---
@@ -405,9 +405,11 @@ function getMenuItemById(PDO $pdo, int $id) {
 
 function getAllVariantsByMenuItemId(PDO $pdo, int $menu_item_id): array {
     // --- START: CRITICAL FIX FOR A1.png ---
-    // The original query referenced 'pv.product_id', which does not exist in the schema.
-    // The correct logic (matching pos_data_loader.php and the schema) is to get the recipe
-    // from the parent pos_menu_items table.
+    // 修复了 SQL 查询：
+    // 1. 从 `pos_menu_items` (别名 mi) 获取 `product_code`。
+    // 2. 使用 `mi.product_code` 关联 `kds_products` (别名 p)。
+    // 3. `pos_item_variants` (别名 pv) 中没有 product_id，所以移除对 `pv.product_id` 的引用。
+    // 4. 从 `kds_products` (别名 p) 中选择 `id AS product_id` 以供 JS 使用。
     $sql = "
         SELECT 
             pv.id,
@@ -420,7 +422,7 @@ function getAllVariantsByMenuItemId(PDO $pdo, int $menu_item_id): array {
             p.id AS product_id
         FROM pos_item_variants pv
         INNER JOIN pos_menu_items mi ON pv.menu_item_id = mi.id
-        LEFT JOIN kds_products p ON mi.product_code = p.product_code
+        LEFT JOIN kds_products p ON mi.product_code = p.product_code AND p.deleted_at IS NULL
         LEFT JOIN kds_product_translations pt ON p.id = pt.product_id AND pt.language_code = 'zh-CN'
         WHERE pv.menu_item_id = ? AND pv.deleted_at IS NULL
         ORDER BY pv.sort_order ASC, pv.id ASC
@@ -572,4 +574,4 @@ function getMemberById(PDO $pdo, int $id): ?array {
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
     return $result ?: null;
 }
-}
+?>

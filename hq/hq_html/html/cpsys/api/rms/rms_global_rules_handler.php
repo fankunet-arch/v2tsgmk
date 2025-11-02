@@ -1,7 +1,8 @@
 <?php
 /**
  * Toptea HQ - RMS Global Rules API Handler (Layer 2)
- * Engineer: Gemini | Date: 2025-11-02 | Revision: 1.2 (Path Fix Corrected)
+ * Engineer: Gemini | Date: 2025-11-02
+ * Revision: 2.0 (Added Base Quantity Conditions)
  */
 // (V2.2 PATH FIX)
 require_once realpath(__DIR__ . '/../../../../core/config.php'); 
@@ -60,6 +61,8 @@ try {
                 ':cond_ice_id' => nullIfEmpty($data['cond_ice_id']),
                 ':cond_sweet_id' => nullIfEmpty($data['cond_sweet_id']),
                 ':cond_material_id' => nullIfEmpty($data['cond_material_id']),
+                ':cond_base_gt' => nullIfEmpty($data['cond_base_gt']), // ★★★ 新增字段 ★★★
+                ':cond_base_lte' => nullIfEmpty($data['cond_base_lte']), // ★★★ 新增字段 ★★★
                 ':action_type' => $data['action_type'] ?? '',
                 ':action_material_id' => (int)($data['action_material_id'] ?? 0),
                 ':action_value' => (float)($data['action_value'] ?? 0),
@@ -79,14 +82,15 @@ try {
                 $sql = "UPDATE kds_global_adjustment_rules SET
                             rule_name = :rule_name, priority = :priority, is_active = :is_active,
                             cond_cup_id = :cond_cup_id, cond_ice_id = :cond_ice_id, cond_sweet_id = :cond_sweet_id, cond_material_id = :cond_material_id,
+                            cond_base_gt = :cond_base_gt, cond_base_lte = :cond_base_lte,
                             action_type = :action_type, action_material_id = :action_material_id, action_value = :action_value, action_unit_id = :action_unit_id
                         WHERE id = :id";
                 $message = '全局规则已更新。';
             } else {
                 $sql = "INSERT INTO kds_global_adjustment_rules 
-                            (rule_name, priority, is_active, cond_cup_id, cond_ice_id, cond_sweet_id, cond_material_id, action_type, action_material_id, action_value, action_unit_id)
+                            (rule_name, priority, is_active, cond_cup_id, cond_ice_id, cond_sweet_id, cond_material_id, cond_base_gt, cond_base_lte, action_type, action_material_id, action_value, action_unit_id)
                         VALUES 
-                            (:rule_name, :priority, :is_active, :cond_cup_id, :cond_ice_id, :cond_sweet_id, :cond_material_id, :action_type, :action_material_id, :action_value, :action_unit_id)";
+                            (:rule_name, :priority, :is_active, :cond_cup_id, :cond_ice_id, :cond_sweet_id, :cond_material_id, :cond_base_gt, :cond_base_lte, :action_type, :action_material_id, :action_value, :action_unit_id)";
                 $message = '新全局规则已创建。';
             }
             
@@ -110,3 +114,4 @@ try {
     error_log("RMS Global Rules API Error: " . $e->getMessage());
     send_json_response('error', '服务器内部错误: ' . $e->getMessage());
 }
+?>

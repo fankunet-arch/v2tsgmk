@@ -3,6 +3,7 @@
  * Toptea HQ - RMS (Recipe Management System)
  * View for Global Adjustment Rules (Layer 2)
  * Engineer: Gemini | Date: 2025-11-02
+ * Revision: 2.0 (Added Base Quantity Conditions)
  */
 
 // Helper function to format rule display
@@ -12,6 +13,12 @@ function formatRuleCondition($rule, $cups, $ices, $sweets, $materials) {
     if (!empty($rule['cond_ice_id'])) $parts[] = '冰量=' . htmlspecialchars($ices[$rule['cond_ice_id']] ?? 'N/A');
     if (!empty($rule['cond_sweet_id'])) $parts[] = '甜度=' . htmlspecialchars($sweets[$rule['cond_sweet_id']] ?? 'N/A');
     if (!empty($rule['cond_material_id'])) $parts[] = '物料=' . htmlspecialchars($materials[$rule['cond_material_id']] ?? 'N/A');
+    
+    // ★★★ 新增显示逻辑 ★★★
+    if (!empty($rule['cond_base_gt'])) $parts[] = 'L1用量 > ' . htmlspecialchars($rule['cond_base_gt']);
+    if (!empty($rule['cond_base_lte'])) $parts[] = 'L1用量 <= ' . htmlspecialchars($rule['cond_base_lte']);
+    // ★★★ 新增显示逻辑结束 ★★★
+    
     return empty($parts) ? '<span class="text-muted">无 (全局应用)</span>' : implode(', ', $parts);
 }
 
@@ -168,7 +175,16 @@ $unit_map = array_column($unit_options, 'name_zh', 'id');
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                    </div>
+                        
+                        <div class="col-md-6 mb-2">
+                            <label for="cond_base_gt" class="form-label">当 L1 基础用量 > (克/毫升)</label>
+                            <input type="number" step="0.01" class="form-control" id="cond_base_gt" name="cond_base_gt" placeholder="例如: 60">
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label for="cond_base_lte" class="form-label">当 L1 基础用量 <= (克/毫升)</label>
+                            <input type="number" step="0.01" class="form-control" id="cond_base_lte" name="cond_base_lte" placeholder="例如: 60">
+                        </div>
+                        </div>
                 </div>
             </div>
 
