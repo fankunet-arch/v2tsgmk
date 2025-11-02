@@ -279,3 +279,8 @@ body.contrast-boost{
     font-weight: 600;
     background-color: #e7f0ff;
 }
+/* === Minimal override: 固定首页商品为 5 列（每列 20%），少于 5 个也不拉宽 === */
+#product_grid > .col{
+  flex: 0 0 20% !important;
+  max-width: 20% !important;
+}

@@ -1,11 +1,14 @@
 <?php
 /**
- * TopTea · KDS · SOP 查询接口 (V11.1 - L2 基础用量条件强化版)
+ * TopTea · KDS · SOP 查询接口 (V11.2 - Gating SQL 修复版)
  *
  * 1. [GATING] 选项门控验证 (P-Code -> kds_product_..._options)
  * 2. [L1] Layer 1: kds_product_recipes (基础配方)
- * 3. [L2] Layer 2: kds_global_adjustment_rules (全局公式) <-- 已修改
+ * 3. [L2] Layer 2: kds_global_adjustment_rules (全局公式)
  * 4. [L3] Layer 3: kds_recipe_adjustments (特例覆盖)
+ *
+ * [V11.2 修复] 修正了 check_gating 和 get_available_options 中
+ * 对 pos_item_variants.product_id 的错误引用。
  */
 declare(strict_types=1);
 header('Content-Type: application/json; charset=utf-8');
@@ -99,11 +102,25 @@ function get_sweet_names_bilingual(PDO $pdo, ?int $sid): array {
 // --- [GATING] 选项门控 ---
 function check_gating(PDO $pdo, int $pid, ?int $cup_id, ?int $ice_id, ?int $sweet_id) {
     // 1. 检查杯型 Gating
-    $cup_rules = $pdo->prepare("SELECT 1 FROM pos_item_variants WHERE product_id = ? AND cup_id IS NOT NULL LIMIT 1");
+    // [V11.2 GATING FIX]: 修复了 product_id 查询，使用正确的 JOIN 路径
+    $cup_rules = $pdo->prepare("
+        SELECT 1 FROM pos_item_variants piv
+        JOIN pos_menu_items pmi ON piv.menu_item_id = pmi.id
+        JOIN kds_products kp ON pmi.product_code = kp.product_code
+        WHERE kp.id = ? AND piv.cup_id IS NOT NULL AND piv.deleted_at IS NULL
+        LIMIT 1
+    ");
     $cup_rules->execute([$pid]);
     if ($cup_rules->fetchColumn() !== false) { // 存在杯型规则
         if ($cup_id === null) throw new Exception("此产品需要杯型 (A-code)，但未提供。", 403);
-        $cup_ok = $pdo->prepare("SELECT 1 FROM pos_item_variants WHERE product_id = ? AND cup_id = ? LIMIT 1");
+        // [V11.2 GATING FIX]: 修复了 product_id 查询
+        $cup_ok = $pdo->prepare("
+            SELECT 1 FROM pos_item_variants piv
+            JOIN pos_menu_items pmi ON piv.menu_item_id = pmi.id
+            JOIN kds_products kp ON pmi.product_code = kp.product_code
+            WHERE kp.id = ? AND piv.cup_id = ? AND piv.deleted_at IS NULL
+            LIMIT 1
+        ");
         $cup_ok->execute([$pid, $cup_id]);
         if ($cup_ok->fetchColumn() === false) throw new Exception("杯型 (A-code) 不适用于此产品。", 403);
     }
@@ -278,20 +295,27 @@ function get_available_options(PDO $pdo, int $pid): array {
     $options = ['cups' => [], 'ice_options' => [], 'sweetness_options' => []];
     
     // 1. Get Cups (Linked via pos_item_variants)
-    $cup_sql = "SELECT DISTINCT c.id, c.cup_code, c.cup_name, c.sop_description_zh, c.sop_description_es
-                FROM kds_cups c
-                JOIN pos_item_variants piv ON c.id = piv.cup_id
-                WHERE piv.product_id = ? AND c.deleted_at IS NULL AND piv.deleted_at IS NULL";
+    // [V11.2 GATING FIX]: 修复了 product_id 查询
+    $cup_sql = "
+        SELECT DISTINCT c.id, c.cup_code, c.cup_name, c.sop_description_zh, c.sop_description_es
+        FROM kds_cups c
+        JOIN pos_item_variants piv ON c.id = piv.cup_id
+        JOIN pos_menu_items pmi ON piv.menu_item_id = pmi.id
+        JOIN kds_products kp ON pmi.product_code = kp.product_code
+        WHERE kp.id = ? AND c.deleted_at IS NULL AND piv.deleted_at IS NULL
+    ";
     $stmt_cups = $pdo->prepare($cup_sql); $stmt_cups->execute([$pid]);
     $options['cups'] = $stmt_cups->fetchAll(PDO::FETCH_ASSOC);
 
     // 2. Get Ice Options (Gating)
-    $ice_sql = "SELECT io.id, io.ice_code, iot_zh.ice_option_name AS name_zh, iot_es.ice_option_name AS name_es
-                FROM kds_product_ice_options pio
-                JOIN kds_ice_options io ON pio.ice_option_id = io.id
-                LEFT JOIN kds_ice_option_translations iot_zh ON io.id = iot_zh.ice_option_id AND iot_zh.language_code = 'zh-CN'
-                LEFT JOIN kds_ice_option_translations iot_es ON io.id = iot_es.ice_option_id AND iot_es.language_code = 'es-ES'
-                WHERE pio.product_id = ? AND io.deleted_at IS NULL ORDER BY io.ice_code";
+    $ice_sql = "
+        SELECT io.id, io.ice_code, iot_zh.ice_option_name AS name_zh, iot_es.ice_option_name AS name_es
+        FROM kds_product_ice_options pio
+        JOIN kds_ice_options io ON pio.ice_option_id = io.id
+        LEFT JOIN kds_ice_option_translations iot_zh ON io.id = iot_zh.ice_option_id AND iot_zh.language_code = 'zh-CN'
+        LEFT JOIN kds_ice_option_translations iot_es ON io.id = iot_es.ice_option_id AND iot_es.language_code = 'es-ES'
+        WHERE pio.product_id = ? AND io.deleted_at IS NULL ORDER BY io.ice_code
+    ";
     $stmt_ice = $pdo->prepare($ice_sql); $stmt_ice->execute([$pid]);
     $options['ice_options'] = $stmt_ice->fetchAll(PDO::FETCH_ASSOC);
     if (empty($options['ice_options'])) { // 如果 Gating 未设置, 返回所有
@@ -314,7 +338,7 @@ function get_available_options(PDO $pdo, int $pid): array {
 }
 
 
-/* -------------------- 2) 主流程 (V11.1) -------------------- */
+/* -------------------- 2) 主流程 (V11.2) -------------------- */
 try {
     $raw = $_GET['code'] ?? '';
     $seg = parse_code($raw);
@@ -338,7 +362,7 @@ try {
         ok([
             'type' => 'base_info',
             'product' => $prod_info,
-            'recipe' => get_base_recipe($pdo, $pid), // L1
+            'recipe' => get_base_recipe_bilingual($pdo, $pid), // L1 (使用 V11.2 新增的Bilingual函数)
             'options' => get_available_options($pdo, $pid) // Gating
         ]);
     }
@@ -408,7 +432,35 @@ try {
 
 } catch (Throwable $e) {
     error_log('KDS sop_handler error (V11): ' . $e->getMessage());
-    $error_message = "[V11.1] " . $e->getMessage() . " in " . basename($e->getFile()) . " on line " . $e->getLine();
+    $error_message = "[V11.2] " . $e->getMessage() . " in " . basename($e->getFile()) . " on line " . $e->getLine();
     out_json('error', $error_message, ['debug' => $e->getMessage()], 500);
+}
+
+// [V11.2 GATING FIX] 新增 get_base_recipe_bilingual 函数 (用于 P-Code only 模式)
+function get_base_recipe_bilingual(PDO $pdo, int $pid): array {
+    $st = $pdo->prepare("
+        SELECT r.material_id, r.quantity, r.unit_id, r.step_category
+        FROM kds_product_recipes r
+        WHERE r.product_id = ? ORDER BY r.sort_order ASC, r.id ASC
+    ");
+    $st->execute([$pid]);
+    $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+    
+    $recipe = [];
+    foreach ($rows as $row) {
+        $m_names = m_name($pdo, (int)$row['material_id']);
+        $u_names = u_name($pdo, (int)$row['unit_id']);
+        $recipe[] = [
+            'material_id'   => (int)$row['material_id'],
+            'material_zh' => $m_names['zh'],
+            'material_es' => $m_names['es'],
+            'quantity'      => (float)$row['quantity'],
+            'unit_id'       => (int)$row['unit_id'],
+            'unit_zh'       => $u_names['zh'],
+            'unit_es'       => $u_names['es'],
+            'step_category' => norm_cat((string)$row['step_category'])
+        ];
+    }
+    return $recipe;
 }
 ?>
