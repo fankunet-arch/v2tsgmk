@@ -1,5 +1,13 @@
+/**
+ * cart.js — 购物车计算模块
+ *
+ * - 修复：将 import { refreshCartUI } from './ui.js'
+ * - 修正为：import { refreshCartUI } from '../ui.js'
+ * 以解决循环依赖并匹配 main.js 的模块结构。
+ */
 import { STATE } from '../state.js';
-import { refreshCartUI } from '../ui.js';
+// --- 核心修复：路径从 './ui.js' 改为 '../ui.js' ---
+import { refreshCartUI } from '../ui.js'; 
 import { calculatePromotionsAPI } from '../api.js';
 import { t, toast } from '../utils.js';
 
