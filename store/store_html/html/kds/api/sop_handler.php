@@ -1,11 +1,10 @@
-
 <?php
 /**
- * TopTea · KDS · SOP 查询接口 (V11.0 - RMS V2.2 三层混合引擎)
+ * TopTea · KDS · SOP 查询接口 (V11.1 - L2 基础用量条件强化版)
  *
  * 1. [GATING] 选项门控验证 (P-Code -> kds_product_..._options)
  * 2. [L1] Layer 1: kds_product_recipes (基础配方)
- * 3. [L2] Layer 2: kds_global_adjustment_rules (全局公式)
+ * 3. [L2] Layer 2: kds_global_adjustment_rules (全局公式) <-- 已修改
  * 4. [L3] Layer 3: kds_recipe_adjustments (特例覆盖)
  */
 declare(strict_types=1);
@@ -174,6 +173,31 @@ function apply_global_rules(PDO $pdo, array $recipe, ?int $cup, ?int $ice, ?int 
              continue;
         }
 
+        // ★★★ 新增逻辑：检查 L1 基础用量条件 ★★★
+        $cond_base_gt = $rule['cond_base_gt'];
+        $cond_base_lte = $rule['cond_base_lte'];
+
+        if ($cond_base_gt !== null || $cond_base_lte !== null) {
+            // 此规则需要检查基础用量。
+            
+            // 1. 检查基础配方中是否存在此物料
+            if (!isset($recipe[$target_mid])) {
+                continue; // L1基础配方没有此物料，跳过此规则
+            }
+            
+            // 2. 获取 L1 (或已被 L2 前序规则修改) 的用量
+            $base_quantity = (float)$recipe[$target_mid]['quantity'];
+
+            // 3. 执行条件判断
+            if ($cond_base_gt !== null && !($base_quantity > (float)$cond_base_gt)) {
+                continue; // 未满足 "大于" 条件，跳过
+            }
+            if ($cond_base_lte !== null && !($base_quantity <= (float)$cond_base_lte)) {
+                continue; // 未满足 "小于等于" 条件，跳过
+            }
+        }
+        // ★★★ 新增逻辑结束 ★★★
+
         // 执行动作
         $value = (float)$rule['action_value'];
         switch ($rule['action_type']) {
@@ -290,7 +314,7 @@ function get_available_options(PDO $pdo, int $pid): array {
 }
 
 
-/* -------------------- 2) 主流程 (V11) -------------------- */
+/* -------------------- 2) 主流程 (V11.1) -------------------- */
 try {
     $raw = $_GET['code'] ?? '';
     $seg = parse_code($raw);
@@ -384,7 +408,7 @@ try {
 
 } catch (Throwable $e) {
     error_log('KDS sop_handler error (V11): ' . $e->getMessage());
-    $error_message = "[V1Two.2] " . $e->getMessage() . " in " . basename($e->getFile()) . " on line " . $e->getLine();
+    $error_message = "[V11.1] " . $e->getMessage() . " in " . basename($e->getFile()) . " on line " . $e->getLine();
     out_json('error', $error_message, ['debug' => $e->getMessage()], 500);
 }
 ?>
