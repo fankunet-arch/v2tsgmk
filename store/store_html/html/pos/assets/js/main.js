@@ -20,6 +20,9 @@ I18N_NS.zh = I18N_NS.zh || {};
 I18N_NS.es = I18N_NS.es || {};
 
 Object.assign(I18N_NS.zh, {
+  // [GEMINI ADDON_FIX]
+  no_addons_available: '暂无可用的加料选项',
+  //
   payment_success: '支付成功',
   payment_methods_label: '支付方式',
   internal:'Internal', lang_zh:'中文', lang_es:'Español', cart:'购物车', total_before_discount:'合计', more:'功能',
@@ -121,6 +124,9 @@ Object.assign(I18N_NS.zh, {
   shift_end_fail: '交班失败'
 });
 Object.assign(I18N_NS.es, {
+   // [GEMINI ADDON_FIX]
+   no_addons_available: 'No hay extras disponibles',
+   //
    payment_success: 'Pago completado',
    payment_methods_label: 'Métodos de Pago',
    internal:'Interno', lang_zh:'Chino', lang_es:'Español', cart:'Carrito', total_before_discount:'Total', more:'Más',
@@ -203,13 +209,13 @@ function showUnclosedEodOverlay(unclosedDate) {
     overlay.id = 'eod-block-overlay';
     overlay.style.position = 'fixed';
     overlay.style.inset = '0';
-    overlay.style.zIndex = '1060';
-    overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.65)';
+    overlay.style.zIndex = '1060'; /* 比 Bootstrap Modal Backdrop 高，比 Modal Content 低一点 */
+    overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.65)'; /* 更暗的背景 */
     overlay.style.display = 'flex';
     overlay.style.alignItems = 'center';
     overlay.style.justifyContent = 'center';
     overlay.style.padding = '1rem';
-    overlay.style.backdropFilter = 'blur(3px)';
+    overlay.style.backdropFilter = 'blur(3px)'; /* 增加模糊效果 */
 
     overlay.innerHTML = `
         <div class="eod-block-content" style="background-color: var(--surface-1, #fff); color: var(--ink, #111); border-radius: 0.8rem; box-shadow: 0 8px 30px rgba(0,0,0,0.2); width: 100%; max-width: 500px; overflow: hidden;">
@@ -374,7 +380,7 @@ async function initApplication() {
              opsBody.innerHTML = `<div class="row g-3">
                 <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_shift_end"><i class="bi bi-person-check d-block fs-2 mb-2"></i><span data-i18n="shift_handover">交接班</span></button></div>
                 <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_txn_query"><i class="bi bi-clock-history d-block fs-2 mb-2"></i><span data-i18n="txn_query">交易查询</span></button></div>
-                <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_eod"><i class="bi bi-calendar-check d-block fs-2 mb-2"></i><span data-i18n="eod">日结</span></button></div>
+                <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_eod"><i class="bi bi-calendar-check d-block fs-2 mb-2"></i><span data-i1im="eod">日结</span></button></div>
                 <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_holds"><i class="bi bi-inboxes d-block fs-2 mb-2"></i><span data-i18n="holds">挂起单</span></button></div>
                 <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" data-bs-toggle="offcanvas" data-bs-target="#settingsOffcanvas"><i class="bi bi-gear d-block fs-2 mb-2"></i><span data-i18n="settings">设置</span></button></div>
               </div>`;

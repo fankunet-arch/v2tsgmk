@@ -5,6 +5,12 @@
  * - 实现 [RMS V2.2]：openCustomize 函数现在会检查产品的 allowed_ice_ids 和
  * allowed_sweetness_ids (来自 pos_data_loader.php)，
  * 并只渲染被允许的选项按钮。
+ *
+ * [GEMINI A1.jpg FIX 2.0 - JS]
+ * 1. (问题 1) 修复 openCustomize，将产品名称添加到 .offcanvas-title
+ * 2. (问题 2) 修复 Gating 渲染逻辑，确保 *第一个* 可见选项被 'checked'，
+ * 3. (问题 3) 修复 updateCustomizePrice，使其更新正确的 #custom_item_price ID
+ * 4. 修复所有选择器以匹配 index.php 中新修复的 ID。
  */
 
 import { STATE } from './state.js';
@@ -28,10 +34,12 @@ export function openCustomize(productId) {
 
     // 1. 绑定产品数据
     $canvas.data('product', product);
-    $canvas.find('.offcanvas-title').text(t('customizing'));
-    $canvas.find('#custom_item_title').text(lang() === 'es' ? product.title_es : product.title_zh);
+    // [GEMINI A1.jpg FIX 1] 将产品名称添加到标题栏
+    $canvas.find('.offcanvas-title').text(`${t('customizing')}: ${lang() === 'es' ? product.title_es : product.title_zh}`);
+
 
     // 2. 渲染规格 (Variants)
+    // [GEMINI A1.jpg FIX 4] 目标 ID 修正为 #variant_selector_list
     const $variantContainer = $canvas.find('#variant_selector_list').empty();
     if (!product.variants || product.variants.length === 0) {
         $variantContainer.html(`<div class="alert alert-danger">${t('choose_variant')}</div>`);
@@ -50,22 +58,25 @@ export function openCustomize(productId) {
     });
 
     // 3. [RMS V2.2 GATING] 渲染冰量选项 (Ice)
+    // [GEMINI A1.jpg FIX 4] 目标 ID 修正为 #ice_selector_list
     const $iceContainer = $canvas.find('#ice_selector_list').empty();
     const iceMasterList = STATE.iceOptions || [];
     const allowedIceIds = product.allowed_ice_ids; // null | number[]
     let visibleIceOptions = 0;
 
     // 遍历“主列表”
-    iceMasterList.forEach((iceOpt, index) => {
+    iceMasterList.forEach((iceOpt) => {
         // Gating 检查:
         // 1. 如果 allowedIceIds 为 null (未设置规则)，则全部显示。
         // 2. 如果 allowedIceIds 是数组，则检查 id 是否在数组中。
         const isAllowed = (allowedIceIds === null) || (Array.isArray(allowedIceIds) && allowedIceIds.includes(iceOpt.id));
         
         if (isAllowed) {
+            // [GEMINI A1.jpg FIX 2] 确保第一个可见选项被选中
+            const isChecked = (visibleIceOptions === 0);
             visibleIceOptions++;
             const iceHtml = `
-                <input type="radio" class="btn-check" name="ice" id="ice_${iceOpt.ice_code}" value="${iceOpt.ice_code}" ${index === 0 ? 'checked' : ''}>
+                <input type="radio" class="btn-check" name="ice" id="ice_${iceOpt.ice_code}" value="${iceOpt.ice_code}" ${isChecked ? 'checked' : ''}>
                 <label class="btn btn-pill" for="ice_${iceOpt.ice_code}">
                     ${lang() === 'es' ? iceOpt.name_es : iceOpt.name_zh}
                 </label>
@@ -74,24 +85,27 @@ export function openCustomize(productId) {
         }
     });
     // 如果 Gating 导致没有选项，则隐藏该部分
-    $iceContainer.closest('.mb-3').toggle(visibleIceOptions > 0);
+    $iceContainer.closest('.mb-4').toggle(visibleIceOptions > 0); // (使用 .mb-4 定位父元素)
 
 
     // 4. [RMS V2.2 GATING] 渲染糖度选项 (Sugar)
+    // [GEMINI A1.jpg FIX 4] 目标 ID 修正为 #sugar_selector_list
     const $sugarContainer = $canvas.find('#sugar_selector_list').empty();
     const sugarMasterList = STATE.sweetnessOptions || [];
     const allowedSweetnessIds = product.allowed_sweetness_ids; // null | number[]
     let visibleSugarOptions = 0;
 
     // 遍历“主列表”
-    sugarMasterList.forEach((sugarOpt, index) => {
+    sugarMasterList.forEach((sugarOpt) => {
         // Gating 检查:
         const isAllowed = (allowedSweetnessIds === null) || (Array.isArray(allowedSweetnessIds) && allowedSweetnessIds.includes(sugarOpt.id));
 
         if (isAllowed) {
+            // [GEMINI A1.jpg FIX 2] 确保第一个可见选项被选中
+            const isChecked = (visibleSugarOptions === 0);
             visibleSugarOptions++;
             const sugarHtml = `
-                <input type="radio" class="btn-check" name="sugar" id="sugar_${sugarOpt.sweetness_code}" value="${sugarOpt.sweetness_code}" ${index === 0 ? 'checked' : ''}>
+                <input type="radio" class="btn-check" name="sugar" id="sugar_${sugarOpt.sweetness_code}" value="${sugarOpt.sweetness_code}" ${isChecked ? 'checked' : ''}>
                 <label class="btn btn-pill" for="sugar_${sugarOpt.sweetness_code}">
                     ${lang() === 'es' ? sugarOpt.name_es : sugarOpt.name_zh}
                 </label>
@@ -100,7 +114,7 @@ export function openCustomize(productId) {
         }
     });
     // 如果 Gating 导致没有选项，则隐藏该部分
-    $sugarContainer.closest('.mb-3').toggle(visibleSugarOptions > 0);
+    $sugarContainer.closest('.mb-4').toggle(visibleSugarOptions > 0); // (使用 .mb-4 定位父元素)
 
 
     // 5. 渲染加料 (Addons) - (Addons 不参与 Gating)
@@ -108,7 +122,7 @@ export function openCustomize(productId) {
     
     // 6. 清空备注并更新价格
     $('#remark_input').val('');
-    updateCustomizePrice();
+    updateCustomizePrice(); // [GEMINI A1.jpg FIX 2] 此调用现在会基于默认选中的 Gating 选项正确计算价格
     customizeOffcanvas.show();
 }
 
@@ -144,7 +158,15 @@ export function updateCustomizePrice() {
 
     const selectedVariantId = parseInt($('input[name="variant_selector"]:checked').val());
     const variant = product.variants.find(v => v.id === selectedVariantId);
-    if (!variant) return;
+    
+    // [GEMINI A1.jpg FIX 2] 增加日志以防万一
+    if (!variant) {
+        // [GEMINI A1.jpg FIX 2] 这是控制台错误来源
+        console.error("updateCustomizePrice: 未找到选中的 variant (ID: " + selectedVariantId + ")。价格将为0。");
+        // [GEMINI A1.jpg FIX 3] 目标 ID 修正为 #custom_item_price
+        $canvas.find('#custom_item_price').text(fmtEUR(0));
+        return;
+    }
 
     let currentPrice = parseFloat(variant.price_eur);
     
@@ -152,6 +174,7 @@ export function updateCustomizePrice() {
         currentPrice += parseFloat($(this).data('price')) || 0;
     });
 
+    // [GEMINI A1.jpg FIX 3] 目标 ID 修正为 #custom_item_price
     $canvas.find('#custom_item_price').text(fmtEUR(currentPrice));
 }
 

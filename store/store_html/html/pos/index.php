@@ -3,6 +3,14 @@
  * TopTea POS - Main Entry Point
  * Engineer: Gemini | Date: 2025-10-30
  * Revision: 3.5 (Enhance Top Bar User Info Display)
+ *
+ * [FIX 2.0 - HTML]
+ * 1. 修复 #customizeOffcanvas 中的 DOM ID，使其与 ui.js 脚本匹配。
+ * 2. 移除硬编码的冰量/糖量选项，为 Gating 逻辑让出容器。
+ * - #customize_variants_list -> #variant_selector_list
+ * - (无ID) -> #ice_selector_list (清空)
+ * - (无ID) -> #sugar_selector_list (清空)
+ * - #customize_price -> #custom_item_price
  */
 
 // This MUST be the first include. It checks if the user is logged in.
@@ -89,7 +97,38 @@ $cache_version = time();
     <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" data-bs-toggle="offcanvas" data-bs-target="#settingsOffcanvas"><i class="bi bi-gear d-block fs-2 mb-2"></i><span data-i18n="settings">设置</span></button></div>
   </div></div></div>
 
-  <div class="offcanvas offcanvas-bottom offcanvas-sheet h-75" tabindex="-1" id="customizeOffcanvas"><div class="offcanvas-header"><h5 class="offcanvas-title" id="customize_title"></h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div><div class="offcanvas-body"><div class="mb-4"><h6 class="fw-bold" data-i18n="size">规格</h6><div class="d-flex flex-wrap gap-2" id="customize_variants_list"></div></div><div class="mb-4"><h6 class="fw-bold" data-i18n="ice">冰量</h6><div class="d-flex flex-wrap gap-2"><input type="radio" class="btn-check" name="ice" id="ice_100" value="100"><label class="btn btn-pill" for="ice_100">正常冰</label><input type="radio" class="btn-check" name="ice" id="ice_50" value="50" checked><label class="btn btn-pill" for="ice_50">少冰</label><input type="radio" class="btn-check" name="ice" id="ice_0" value="0"><label class="btn btn-pill" for="ice_0">去冰</label></div></div><div class="mb-4"><h6 class="fw-bold" data-i18n="sugar">糖度</h6><div class="d-flex flex-wrap gap-2"><input type="radio" class="btn-check" name="sugar" id="sugar_100" value="100"><label class="btn btn-pill" for="sugar_100">全糖</label><input type="radio" class="btn-check" name="sugar" id="sugar_50" value="50" checked><label class="btn btn-pill" for="sugar_50">半糖</label><input type="radio" class="btn-check" name="sugar" id="sugar_0" value="0"><label class="btn btn-pill" for="sugar_0">无糖</label></div></div><div class="mb-4"><h6 class="fw-bold" data-i18n="addons">加料</h6><div class="d-flex flex-wrap gap-2" id="addon_list"></div></div><div class="mb-3"><label for="remark_input" class="form-label fw-bold" data-i18n="remark">备注（可选）</label><input type="text" class="form-control" id="remark_input"></div></div><div class="offcanvas-footer p-3 border-top border-sheet"><div class="d-flex justify-content-between align-items-center mb-3"><span data-i18n="curr_price">当前价格</span><span class="fs-4 fw-bold text-brand" id="customize_price">€0.00</span></div><button class="btn btn-brand w-100" id="btn_add_to_cart" data-i18n="add_to_cart">加入购物车</button></div></div>
+  <div class="offcanvas offcanvas-bottom offcanvas-sheet h-75" tabindex="-1" id="customizeOffcanvas">
+    <div class="offcanvas-header"><h5 class="offcanvas-title" id="customize_title"></h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div>
+    <div class="offcanvas-body">
+        <div class="mb-4">
+            <h6 class="fw-bold" data-i18n="size">规格</h6>
+            <div class="d-flex flex-wrap gap-2" id="variant_selector_list"></div>
+        </div>
+        <div class="mb-4">
+            <h6 class="fw-bold" data-i18n="ice">冰量</h6>
+            <div class="d-flex flex-wrap gap-2" id="ice_selector_list"></div>
+        </div>
+        <div class="mb-4">
+            <h6 class="fw-bold" data-i18n="sugar">糖度</h6>
+            <div class="d-flex flex-wrap gap-2" id="sugar_selector_list"></div>
+        </div>
+        <div class="mb-4">
+            <h6 class="fw-bold" data-i18n="addons">加料</h6>
+            <div class="d-flex flex-wrap gap-2" id="addon_list"></div>
+        </div>
+        <div class="mb-3">
+            <label for="remark_input" class="form-label fw-bold" data-i18n="remark">备注（可选）</label>
+            <input type="text" class="form-control" id="remark_input">
+        </div>
+    </div>
+    <div class="offcanvas-footer p-3 border-top border-sheet">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <span data-i18n="curr_price">当前价格</span>
+            <span class="fs-4 fw-bold text-brand" id="custom_item_price">€0.00</span>
+        </div>
+        <button class="btn btn-brand w-100" id="btn_add_to_cart" data-i18n="add_to_cart">加入购物车</button>
+    </div>
+</div>
 
   <div class="modal fade" id="orderSuccessModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false"><div class="modal-dialog modal-dialog-centered"><div class="modal-content modal-sheet"><div class="modal-body text-center p-4"><i class="bi bi-check-circle-fill text-success" style="font-size: 4rem;"></i><h3 class="mt-3" data-i18n="order_success">下单成功</h3><p class="text-muted" data-i18n="invoice_number">票号</p><h4 class="mb-3" id="success_invoice_number">--</h4><p class="text-muted small" data-i18n="qr_code_info">合规二维码内容 (TicketBAI/Veri*Factu)</p><div class="p-2 bg-light rounded border"><code id="success_qr_content" style="word-break: break-all;">-</code></div><button type="button" class="btn btn-brand w-100 mt-4" data-bs-dismiss="modal" data-i18n="new_order">开始新订单</button></div></div></div></div>
 
