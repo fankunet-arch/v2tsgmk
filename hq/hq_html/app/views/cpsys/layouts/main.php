@@ -3,13 +3,18 @@
  * Toptea HQ - cpsys
  * Main Layout File
  * Engineer: Gemini | Date: 2025-11-02 | Revision: 14.0 (RMS V2.2 - Add Global Rules Menu)
+ *
+ * [GEMINI ADDON_FIX]:
+ * 1. Added 'pos_addon_management' to $posPages array.
+ * 2. Added new menu link for '加料管理' under POS 管理.
  */
 $page_title = $page_title ?? 'TopTea HQ';
 $page = $_GET['page'] ?? 'dashboard';
 
 // Updated page groups for menu highlighting
 $rmsPages = ['rms_product_management', 'rms_global_rules']; // (V2.2) Added global rules
-$posPages = ['pos_menu_management', 'pos_variants_management', 'pos_category_management', 'pos_invoice_list', 'pos_invoice_detail', 'pos_promotion_management', 'pos_eod_reports', 'pos_member_level_management', 'pos_member_management', 'pos_member_settings', 'pos_point_redemption_rules'];
+// [GEMINI ADDON_FIX]
+$posPages = ['pos_menu_management', 'pos_variants_management', 'pos_category_management', 'pos_invoice_list', 'pos_invoice_detail', 'pos_promotion_management', 'pos_eod_reports', 'pos_member_level_management', 'pos_member_management', 'pos_member_settings', 'pos_point_redemption_rules', 'pos_addon_management'];
 $dictionaryPages = ['cup_management', 'material_management', 'unit_management', 'ice_option_management', 'sweetness_option_management', 'product_status_management'];
 $systemPages = ['user_management', 'store_management', 'kds_user_management', 'pos_print_template_management', 'pos_print_template_variables'];
 $stockPages = ['warehouse_stock_management', 'stock_allocation', 'store_stock_view'];
@@ -73,6 +78,7 @@ $stockPages = ['warehouse_stock_management', 'stock_allocation', 'store_stock_vi
                             <ul class="nav flex-column ps-4">
                                 <li class="nav-item"><a class="nav-link <?php echo (in_array($page, ['pos_menu_management', 'pos_variants_management'])) ? 'active' : ''; ?>" href="index.php?page=pos_menu_management">菜单管理</a></li>
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_category_management') ? 'active' : ''; ?>" href="index.php?page=pos_category_management">POS分类管理</a></li>
+                                <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_addon_management') ? 'active' : ''; ?>" href="index.php?page=pos_addon_management">加料管理</a></li>
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_promotion_management') ? 'active' : ''; ?>" href="index.php?page=pos_promotion_management">营销活动管理</a></li>
                                 <li class="nav-item"><a class="nav-link <?php echo (in_array($page, ['pos_invoice_list', 'pos_invoice_detail'])) ? 'active' : ''; ?>" href="index.php?page=pos_invoice_list">票据查询</a></li>
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_eod_reports') ? 'active' : ''; ?>" href="index.php?page=pos_eod_reports">日结报告</a></li>

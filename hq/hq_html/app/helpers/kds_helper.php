@@ -3,6 +3,13 @@
  * Toptea HQ - cpsys
  * KDS Data Helper Functions
  * Engineer: Gemini | Date: 2025-11-02 | Revision: 14.1 (RMS V2.2 - Gating Logic & CRITICAL SQL FIX)
+ *
+ * [GEMINI 500_ERROR_FIX]:
+ * 1. Moved 'getAllPosAddons' from index.php to this helper file.
+ * 2. Fixed ambiguity in 'getAllPosAddons' query: mt ON m.id = mt.material_id -> mt ON m.id = mt.material_id
+ * 3. Fixed ambiguity in 'getAllVariantsByMenuItemId': pt ON p.id = pt.product_id -> pt ON p.id = pt.product_id
+ * 4. [CRITICAL 500 FIX] Added COALESCE to 'getAllVariantsByMenuItemId' to handle NULL product_codes,
+ * which caused concatenation with NULL in the view, resulting in a 500 error.
  */
 
 // --- RMS: New Functions for Dynamic Recipe Engine ---
@@ -404,12 +411,10 @@ function getMenuItemById(PDO $pdo, int $id) {
 }
 
 function getAllVariantsByMenuItemId(PDO $pdo, int $menu_item_id): array {
-    // --- START: CRITICAL FIX FOR A1.png ---
-    // 修复了 SQL 查询：
-    // 1. 从 `pos_menu_items` (别名 mi) 获取 `product_code`。
-    // 2. 使用 `mi.product_code` 关联 `kds_products` (别名 p)。
-    // 3. `pos_item_variants` (别名 pv) 中没有 product_id，所以移除对 `pv.product_id` 的引用。
-    // 4. 从 `kds_products` (别名 p) 中选择 `id AS product_id` 以供 JS 使用。
+    // --- START: [GEMINI 500_ERROR_FIX] ---
+    // 1. 修复了 JOIN kds_product_translations pt ON p.id ... 的歧义性
+    // 2. 添加了 COALESCE，防止 $variant['product_sku'] 或 $variant['recipe_name_zh'] 为 NULL，
+    //    这会导致 view 文件中 `NULL . ' - ' . NULL` 尝试连接空值，引发 500 错误。
     $sql = "
         SELECT 
             pv.id,
@@ -417,8 +422,8 @@ function getAllVariantsByMenuItemId(PDO $pdo, int $menu_item_id): array {
             pv.price_eur,
             pv.sort_order,
             pv.is_default,
-            p.product_code AS product_sku,
-            pt.product_name AS recipe_name_zh,
+            COALESCE(p.product_code, 'N/A') AS product_sku,
+            COALESCE(pt.product_name, '未关联配方') AS recipe_name_zh,
             p.id AS product_id
         FROM pos_item_variants pv
         INNER JOIN pos_menu_items mi ON pv.menu_item_id = mi.id
@@ -427,7 +432,7 @@ function getAllVariantsByMenuItemId(PDO $pdo, int $menu_item_id): array {
         WHERE pv.menu_item_id = ? AND pv.deleted_at IS NULL
         ORDER BY pv.sort_order ASC, pv.id ASC
     ";
-    // --- END: CRITICAL FIX FOR A1.png ---
+    // --- END: [GEMINI 500_ERROR_FIX] ---
     
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$menu_item_id]);
@@ -573,5 +578,29 @@ function getMemberById(PDO $pdo, int $id): ?array {
     $stmt->execute([$id]);
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
     return $result ?: null;
+}
+
+// [GEMINI 500_ERROR_FIX] Moved this function here from index.php
+function getAllPosAddons(PDO $pdo): array {
+    try {
+        $sql = "
+            SELECT 
+                pa.*,
+                mt.material_name AS material_name_zh
+            FROM pos_addons pa
+            LEFT JOIN kds_materials m ON pa.material_id = m.id
+            LEFT JOIN kds_material_translations mt ON m.id = mt.material_id AND mt.language_code = 'zh-CN'
+            WHERE pa.deleted_at IS NULL
+            ORDER BY pa.sort_order ASC, pa.id ASC
+        ";
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        if ($e->getCode() == '42S02') { 
+             error_log("Warning: pos_addons table not found. " . $e->getMessage());
+             return [];
+        }
+        throw $e;
+    }
 }
 ?>

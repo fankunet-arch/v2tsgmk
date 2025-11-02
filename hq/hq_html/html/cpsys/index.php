@@ -3,6 +3,14 @@
  * Toptea HQ - cpsys
  * Main Entry Point
  * Engineer: Gemini | Date: 2025-11-02 | Revision: 14.1 (RMS V2.2 - Fix Directory Paths)
+ *
+ * [GEMINI ADDON_FIX]:
+ * 1. Added new route for 'pos_addon_management'.
+ * 2. Preload $materials for the addon form dropdown.
+ *
+ * [GEMINI 500_ERROR_FIX]:
+ * 1. Removed function definition 'getAllPosAddons' from this router file.
+ * 2. This function is now correctly placed in 'kds_helper.php'.
  */
 require_once realpath(__DIR__ . '/../../core/auth_core.php');
 header('Content-Type: text/html; charset=utf-8');
@@ -67,6 +75,8 @@ function getAllGlobalRules(PDO $pdo): array {
         throw $e;
     }
 }
+
+// [GEMINI 500_ERROR_FIX] Function 'getAllPosAddons' was moved to kds_helper.php
 
 
 switch ($page) {
@@ -161,6 +171,16 @@ switch ($page) {
         $content_view = APP_PATH . '/views/cpsys/pos_category_management_view.php';
         $page_js = 'pos_category_management.js';
         break;
+
+    // [GEMINI ADDON_FIX] Start new route
+    case 'pos_addon_management':
+        $page_title = 'POS 管理 - 加料管理';
+        $addons = getAllPosAddons($pdo);
+        $materials = getAllMaterials($pdo); // For the material link dropdown
+        $content_view = APP_PATH . '/views/cpsys/pos_addon_management_view.php';
+        $page_js = 'pos_addon_management.js';
+        break;
+    // [GEMINI ADDON_FIX] End new route
         
     case 'pos_invoice_list':
         $page_title = 'POS 管理 - 票据查询';
@@ -341,4 +361,5 @@ if (isset($content_view) || $page === 'access_denied' || http_response_code() ==
 
 } else {
     die("Critical Error: No view file determined and not a recognized error state.");
+}
 }

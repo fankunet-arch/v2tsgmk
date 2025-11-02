@@ -3,6 +3,13 @@
  * TopTea HQ – RMS API (product_handler.php)
  * Minimal-change, robust fix for gating + adjustments schema mismatch.
  * Date: 2025-11-02
+ *
+ * [GEMINI V2.2 GATING FIX]:
+ * 1. 修复 save_product 逻辑。
+ * 2. 当 Gating 选项（如 ice/sweetness）被全部取消（保存空数组 '[]'）时，
+ * 原逻辑会删除所有记录，导致 POS 端无法区分“未配置”和“配置为空”。
+ * 3. 新逻辑：当保存空数组时，插入一条 (product_id, 0) 的标记记录。
+ * 这允许 pos_data_loader.php 明确识别出“已配置但为空”的状态。
  */
 
 declare(strict_types=1);
@@ -125,8 +132,9 @@ try {
             $resp = $base;
             $resp['base_recipes'] = $base_recipes;                 // ✅ 符合前端字段
             $resp['adjustments']  = $adjustments;                  // 分组+overrides
-            $resp['allowed_sweetness_ids'] = $allowed_sweetness_ids; // ✅ 符合前端字段
-            $resp['allowed_ice_ids']       = $allowed_ice_ids;       // ✅ 符合前端字段
+            // [GEMINI GATING FIX] 过滤掉 0 标记记录，如果存在的话
+            $resp['allowed_sweetness_ids'] = array_filter($allowed_sweetness_ids, fn($id) => $id > 0);
+            $resp['allowed_ice_ids']       = array_filter($allowed_ice_ids, fn($id) => $id > 0);
 
             send_json_response('success','产品详情加载成功。', $resp);
         }
@@ -175,17 +183,26 @@ try {
             $allowedIce   = ensure_array($product['allowed_ice_ids']       ?? $product['allowed_ice']       ?? []);
             $allowedIce   = array_values(array_unique(array_map('intval', $allowedIce)));   // ✅ 去重+整型
 
+            // --- [GEMINI V2.2 GATING FIX] START ---
             $pdo->prepare("DELETE FROM kds_product_sweetness_options WHERE product_id=?")->execute([$productId]);
-            if ($allowedSweet) {
+            if (!empty($allowedSweet)) {
                 $ins = $pdo->prepare("INSERT INTO kds_product_sweetness_options (product_id, sweetness_option_id) VALUES (?,?)");
-                foreach ($allowedSweet as $sid) { $ins->execute([$productId, $sid]); }
+                foreach ($allowedSweet as $sid) { if ($sid > 0) $ins->execute([$productId, $sid]); }
+            } else {
+                // 插入 (product_id, 0) 标记记录，表示“已配置但为空”
+                $pdo->prepare("INSERT INTO kds_product_sweetness_options (product_id, sweetness_option_id) VALUES (?,0)")->execute([$productId]);
             }
 
             $pdo->prepare("DELETE FROM kds_product_ice_options WHERE product_id=?")->execute([$productId]);
-            if ($allowedIce) {
+            if (!empty($allowedIce)) {
                 $ins = $pdo->prepare("INSERT INTO kds_product_ice_options (product_id, ice_option_id) VALUES (?,?)");
-                foreach ($allowedIce as $iid) { $ins->execute([$productId, $iid]); }
+                foreach ($allowedIce as $iid) { if ($iid > 0) $ins->execute([$productId, $iid]); }
+            } else {
+                // 插入 (product_id, 0) 标记记录
+                $pdo->prepare("INSERT INTO kds_product_ice_options (product_id, ice_option_id) VALUES (?,0)")->execute([$productId]);
             }
+            // --- [GEMINI V2.2 GATING FIX] END ---
+
 
             // 基础配方（前端字段：base_recipes）
             $base = ensure_array($product['base_recipes'] ?? $product['base_recipe'] ?? []);
