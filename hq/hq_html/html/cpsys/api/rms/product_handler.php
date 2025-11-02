@@ -1,189 +1,292 @@
 <?php
 /**
- * Toptea HQ - RMS API Handler
- * Handles all CRUD for the new dynamic recipe engine.
- * Engineer: Gemini | Date: 2025-11-02 | Revision: 6.0 (RMS V2.2 - Save Gating Logic)
+ * TopTea HQ – RMS API (product_handler.php)
+ * Minimal-change, robust fix for gating + adjustments schema mismatch.
+ * Date: 2025-11-02
  */
-// CORE FIX: Corrected the relative path to the core config file.
-require_once realpath(__DIR__ . '/../../../../core/config.php');
-require_once APP_PATH . '/helpers/kds_helper.php';
+
+declare(strict_types=1);
+
+// ---------- bootstrap ----------
+require_once realpath(__DIR__ . '/../../../../core/config.php'); // defines $pdo, APP_PATH
 require_once APP_PATH . '/helpers/auth_helper.php';
+require_once APP_PATH . '/helpers/kds_helper.php';
 
+if (session_status() !== PHP_SESSION_ACTIVE) { @session_start(); }
 header('Content-Type: application/json; charset=utf-8');
-function send_json_response($status, $message, $data = null, $http = 200) { 
-    http_response_code($http);
-    echo json_encode(['status' => $status, 'message' => $message, 'data' => $data]); 
-    exit; 
+
+function send_json_response(string $status, string $message = '', $data = null, int $http_code = 200): void {
+    http_response_code($http_code);
+    echo json_encode(['status'=>$status,'message'=>$message,'data'=>$data], JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
-@session_start();
-if (($_SESSION['role_id'] ?? null) !== ROLE_SUPER_ADMIN) {
-    send_json_response('error', '权限不足。', null, 403);
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    send_json_response('error','数据库未初始化（PDO）。', null, 500);
+}
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+// parse input
+$action = $_GET['action'] ?? '';
+$raw = file_get_contents('php://input');
+$body = [];
+if ($raw) {
+    $tmp = json_decode($raw, true);
+    if (json_last_error() === JSON_ERROR_NONE && is_array($tmp)) { $body = $tmp; }
+    if (!$action && isset($body['action'])) { $action = (string)$body['action']; }
 }
 
-global $pdo;
-$action = $_GET['action'] ?? null;
-$json_data = [];
-if ($_SERVER['REQUEST_METHOD'] === 'POST' || $_SERVER['REQUEST_METHOD'] === 'PUT') {
-    $json_data = json_decode(file_get_contents('php://input'), true);
-    $action = $json_data['action'] ?? $action;
-}
+function ensure_array($v): array { return is_array($v) ? $v : []; }
 
+// ---------- actions ----------
 try {
-    switch($action) {
-        case 'get_next_product_code':
-            $next_code = getNextAvailableCustomCode($pdo, 'kds_products', 'product_code', 101);
-            send_json_response('success', 'Next available product code retrieved.', ['next_code' => $next_code]);
-            break;
+    switch ($action) {
+        case 'get_next_product_code': {
+            // 兼容你现有的辅助函数，若不存在则降级计算
+            if (function_exists('getNextAvailableCustomCode')) {
+                $next = getNextAvailableCustomCode($pdo, 'kds_products', 'product_code', 101);
+            } else {
+                $used = $pdo->query("SELECT product_code FROM kds_products WHERE deleted_at IS NULL ORDER BY product_code ASC")
+                            ->fetchAll(PDO::FETCH_COLUMN);
+                $next = 101; foreach ($used as $u) { if ((int)$u === $next) $next++; }
+            }
+            send_json_response('success','OK',['next_code'=>$next]);
+        }
 
-        case 'get_product_details':
+        case 'get_product_details': {
             $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
-            if (!$id) send_json_response('error', '无效的产品ID。', null, 400);
-            
-            // kds_helper->getProductDetailsForRMS() now includes gating data
-            $data = getProductDetailsForRMS($pdo, $id); 
+            if (!$id) send_json_response('error','无效的产品ID。', null, 400);
 
-            if ($data) {
-                // Group adjustments by conditions
-                $groupedAdjustments = [];
-                foreach ($data['adjustments'] as $adj) {
-                    $key = ($adj['cup_id'] ?? 'null') . '-' . ($adj['sweetness_option_id'] ?? 'null') . '-' . ($adj['ice_option_id'] ?? 'null');
-                    if (!isset($groupedAdjustments[$key])) {
-                        $groupedAdjustments[$key] = [
-                            'cup_id' => $adj['cup_id'],
-                            'sweetness_option_id' => $adj['sweetness_option_id'],
-                            'ice_option_id' => $adj['ice_option_id'],
-                            'overrides' => []
-                        ];
-                    }
-                    $groupedAdjustments[$key]['overrides'][] = [
-                        'material_id' => $adj['material_id'],
-                        'quantity' => $adj['quantity'],
-                        'unit_id' => $adj['unit_id'],
-                        'step_category' => $adj['step_category'] // 传递步骤分类
+            // 基本信息 + 翻译
+            $stmt = $pdo->prepare("
+                SELECT p.id, p.product_code, p.status_id, p.is_active,
+                       COALESCE(tzh.product_name,'') AS name_zh,
+                       COALESCE(tes.product_name,'') AS name_es
+                FROM kds_products p
+                LEFT JOIN kds_product_translations tzh ON tzh.product_id=p.id AND tzh.language_code='zh-CN'
+                LEFT JOIN kds_product_translations tes ON tes.product_id=p.id AND tes.language_code='es-ES'
+                WHERE p.id=? AND p.deleted_at IS NULL
+                LIMIT 1
+            ");
+            $stmt->execute([$id]);
+            $base = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$base) send_json_response('error','未找到产品。', null, 404);
+
+            // Layer 1 基础配方（前端字段：base_recipes）
+            $stmt = $pdo->prepare("
+                SELECT id, material_id, unit_id, quantity, step_category, sort_order
+                FROM kds_product_recipes
+                WHERE product_id=?
+                ORDER BY sort_order ASC, id ASC
+            ");
+            $stmt->execute([$id]);
+            $base_recipes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Layer 3 Overrides（表：kds_recipe_adjustments）→ 分组返回（前端渲染用）
+            $stmt = $pdo->prepare("
+                SELECT id, material_id, unit_id, quantity, step_category,
+                       cup_id, sweetness_option_id, ice_option_id
+                FROM kds_recipe_adjustments
+                WHERE product_id=?
+                ORDER BY id ASC
+            ");
+            $stmt->execute([$id]);
+            $raw = ensure_array($stmt->fetchAll(PDO::FETCH_ASSOC));
+
+            $grouped = [];
+            foreach ($raw as $row) {
+                $key = ($row['cup_id'] ?? 'null') . '-' . ($row['sweetness_option_id'] ?? 'null') . '-' . ($row['ice_option_id'] ?? 'null');
+                if (!isset($grouped[$key])) {
+                    $grouped[$key] = [
+                        'cup_id' => $row['cup_id'] !== null ? (int)$row['cup_id'] : null,
+                        'sweetness_option_id' => $row['sweetness_option_id'] !== null ? (int)$row['sweetness_option_id'] : null,
+                        'ice_option_id' => $row['ice_option_id'] !== null ? (int)$row['ice_option_id'] : null,
+                        'overrides' => []
                     ];
                 }
-                $data['adjustments'] = array_values($groupedAdjustments);
-                send_json_response('success', '产品详情加载成功。', $data);
-            } else {
-                send_json_response('error', '未找到产品。', null, 404);
+                $grouped[$key]['overrides'][] = [
+                    'material_id'   => (int)$row['material_id'],
+                    'quantity'      => (float)$row['quantity'],
+                    'unit_id'       => (int)$row['unit_id'],
+                    'step_category' => $row['step_category'] ?? 'base',
+                ];
             }
-            break;
-        
-        case 'save_product':
-            $productData = $json_data['product'];
-            if (empty($productData)) send_json_response('error', '无效的产品数据。', null, 400);
+            $adjustments = array_values($grouped);
+
+            // gating（按前端字段名 *_ids 返回）
+            $stmt = $pdo->prepare("SELECT sweetness_option_id FROM kds_product_sweetness_options WHERE product_id=?");
+            $stmt->execute([$id]);
+            $allowed_sweetness_ids = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+
+            $stmt = $pdo->prepare("SELECT ice_option_id FROM kds_product_ice_options WHERE product_id=?");
+            $stmt->execute([$id]);
+            $allowed_ice_ids = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+
+            $resp = $base;
+            $resp['base_recipes'] = $base_recipes;                 // ✅ 符合前端字段
+            $resp['adjustments']  = $adjustments;                  // 分组+overrides
+            $resp['allowed_sweetness_ids'] = $allowed_sweetness_ids; // ✅ 符合前端字段
+            $resp['allowed_ice_ids']       = $allowed_ice_ids;       // ✅ 符合前端字段
+
+            send_json_response('success','产品详情加载成功。', $resp);
+        }
+
+        case 'save_product': {
+            $product = $body['product'] ?? null;
+            if (!is_array($product)) send_json_response('error','无效的产品数据。', null, 400);
 
             $pdo->beginTransaction();
 
-            $productId = (int)($productData['id'] ?? 0);
-            
-            // 1. 保存产品主表和翻译
+            $productId   = isset($product['id']) ? (int)$product['id'] : 0;
+            $productCode = trim((string)($product['product_code'] ?? ''));
+            $statusId    = (int)($product['status_id'] ?? 1);
+
             if ($productId > 0) {
-                $stmt = $pdo->prepare("UPDATE kds_products SET product_code = ?, status_id = ? WHERE id = ?");
-                $stmt->execute([$productData['product_code'], $productData['status_id'], $productId]);
-
-                $stmt_trans = $pdo->prepare("REPLACE INTO kds_product_translations (product_id, language_code, product_name) VALUES (?, ?, ?), (?, ?, ?)");
-                $stmt_trans->execute([$productId, 'zh-CN', $productData['name_zh'], $productId, 'es-ES', $productData['name_es']]);
+                $stmt = $pdo->prepare("UPDATE kds_products SET product_code=?, status_id=? WHERE id=?");
+                $stmt->execute([$productCode, $statusId, $productId]);
             } else {
-                $stmt_check_code = $pdo->prepare("SELECT id FROM kds_products WHERE product_code = ? AND deleted_at IS NULL");
-                $stmt_check_code->execute([$productData['product_code']]);
-                if($stmt_check_code->fetch()) {
-                    $pdo->rollBack();
-                    send_json_response('error', '产品编码 ' . htmlspecialchars($productData['product_code']) . ' 已存在，请使用其他编码。', null, 409);
-                }
-                
+                // 去重
+                $stmt = $pdo->prepare("SELECT id FROM kds_products WHERE product_code=? AND deleted_at IS NULL");
+                $stmt->execute([$productCode]);
+                if ($stmt->fetchColumn()) { $pdo->rollBack(); send_json_response('error', '产品编码已存在：'.$productCode, null, 409); }
                 $stmt = $pdo->prepare("INSERT INTO kds_products (product_code, status_id, is_active) VALUES (?, ?, 1)");
-                $stmt->execute([$productData['product_code'], $productData['status_id']]);
-                $productId = $pdo->lastInsertId();
-
-                $stmt_trans = $pdo->prepare("INSERT INTO kds_product_translations (product_id, language_code, product_name) VALUES (?, ?, ?), (?, ?, ?)");
-                $stmt_trans->execute([$productId, 'zh-CN', $productData['name_zh'], $productId, 'es-ES', $productData['name_es']]);
+                $stmt->execute([$productCode, $statusId]);
+                $productId = (int)$pdo->lastInsertId();
             }
 
-            // 2. 保存基础配方 (Layer 1)
-            $pdo->prepare("DELETE FROM kds_product_recipes WHERE product_id = ?")->execute([$productId]);
-            if (!empty($productData['base_recipes'])) {
-                $stmt_recipe = $pdo->prepare("INSERT INTO kds_product_recipes (product_id, material_id, quantity, unit_id, step_category, sort_order) VALUES (?, ?, ?, ?, ?, ?)");
-                foreach ($productData['base_recipes'] as $recipe) {
-                     if (!empty($recipe['material_id']) && isset($recipe['quantity']) && !empty($recipe['unit_id'])) {
-                        $stmt_recipe->execute([
-                            $productId, 
-                            $recipe['material_id'], 
-                            $recipe['quantity'], 
-                            $recipe['unit_id'],
-                            $recipe['step_category'] ?? 'base',
-                            $recipe['sort_order'] ?? 0
-                        ]);
-                     }
+            // 翻译 upsert
+            $nameZh = trim((string)($product['name_zh'] ?? ''));
+            $nameEs = trim((string)($product['name_es'] ?? ''));
+            $qSel = $pdo->prepare("SELECT id FROM kds_product_translations WHERE product_id=? AND language_code=?");
+            foreach ([['zh-CN',$nameZh], ['es-ES',$nameEs]] as [$lang,$name]) {
+                $qSel->execute([$productId,$lang]);
+                $tid = $qSel->fetchColumn();
+                if ($tid) {
+                    $pdo->prepare("UPDATE kds_product_translations SET product_name=? WHERE id=?")->execute([$name,$tid]);
+                } else {
+                    $pdo->prepare("INSERT INTO kds_product_translations (product_id, language_code, product_name) VALUES (?,?,?)")
+                        ->execute([$productId,$lang,$name]);
                 }
             }
-            
-            // 3. 保存特例规则 (Layer 3)
-            $pdo->prepare("DELETE FROM kds_recipe_adjustments WHERE product_id = ?")->execute([$productId]);
-            if (!empty($productData['adjustments'])) {
-                $stmt_adj = $pdo->prepare("
-                    INSERT INTO kds_recipe_adjustments 
-                        (product_id, material_id, cup_id, sweetness_option_id, ice_option_id, quantity, unit_id, step_category) 
+
+            // gating：同时兼容 *_ids 与旧字段名 —— 并【去重规范化】以防重复主键
+            $allowedSweet = ensure_array($product['allowed_sweetness_ids'] ?? $product['allowed_sweetness'] ?? []);
+            $allowedSweet = array_values(array_unique(array_map('intval', $allowedSweet))); // ✅ 去重+整型
+            $allowedIce   = ensure_array($product['allowed_ice_ids']       ?? $product['allowed_ice']       ?? []);
+            $allowedIce   = array_values(array_unique(array_map('intval', $allowedIce)));   // ✅ 去重+整型
+
+            $pdo->prepare("DELETE FROM kds_product_sweetness_options WHERE product_id=?")->execute([$productId]);
+            if ($allowedSweet) {
+                $ins = $pdo->prepare("INSERT INTO kds_product_sweetness_options (product_id, sweetness_option_id) VALUES (?,?)");
+                foreach ($allowedSweet as $sid) { $ins->execute([$productId, $sid]); }
+            }
+
+            $pdo->prepare("DELETE FROM kds_product_ice_options WHERE product_id=?")->execute([$productId]);
+            if ($allowedIce) {
+                $ins = $pdo->prepare("INSERT INTO kds_product_ice_options (product_id, ice_option_id) VALUES (?,?)");
+                foreach ($allowedIce as $iid) { $ins->execute([$productId, $iid]); }
+            }
+
+            // 基础配方（前端字段：base_recipes）
+            $base = ensure_array($product['base_recipes'] ?? $product['base_recipe'] ?? []);
+            $pdo->prepare("DELETE FROM kds_product_recipes WHERE product_id=?")->execute([$productId]);
+            if ($base) {
+                $ins = $pdo->prepare("
+                    INSERT INTO kds_product_recipes (product_id, material_id, unit_id, quantity, step_category, sort_order)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ");
+                $sort = 1;
+                foreach ($base as $row) {
+                    $ins->execute([
+                        $productId,
+                        (int)($row['material_id'] ?? 0),
+                        (int)($row['unit_id'] ?? 0),
+                        (float)($row['quantity'] ?? 0),
+                        (string)($row['step_category'] ?? 'base'),
+                        $sort++,
+                    ]);
+                }
+            }
+
+            // 覆盖（L3）：兼容“分组+overrides”与“扁平行列表”
+            $adjInput = ensure_array($product['adjustments'] ?? []);
+            $pdo->prepare("DELETE FROM kds_recipe_adjustments WHERE product_id=?")->execute([$productId]);
+
+            // 判断是否为分组结构
+            $isGrouped = false;
+            foreach ($adjInput as $it) { if (is_array($it) && array_key_exists('overrides', $it)) { $isGrouped = true; break; } }
+
+            if ($adjInput) {
+                $ins = $pdo->prepare("
+                    INSERT INTO kds_recipe_adjustments
+                    (product_id, material_id, unit_id, quantity, step_category, cup_id, sweetness_option_id, ice_option_id)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ");
-                foreach ($productData['adjustments'] as $adj) {
-                    if (!empty($adj['material_id']) && isset($adj['quantity']) && !empty($adj['unit_id'])) {
-                        $step_category = (!empty($adj['step_category'])) ? $adj['step_category'] : null;
-                        $stmt_adj->execute([
-                            $productId, $adj['material_id'],
-                            empty($adj['cup_id']) ? null : $adj['cup_id'],
-                            empty($adj['sweetness_option_id']) ? null : $adj['sweetness_option_id'],
-                            empty($adj['ice_option_id']) ? null : $adj['ice_option_id'],
-                            $adj['quantity'],
-                            $adj['unit_id'],
-                            $step_category
+
+                if ($isGrouped) {
+                    foreach ($adjInput as $g) {
+                        $cup   = isset($g['cup_id']) ? (int)$g['cup_id'] : null;
+                        $sweet = isset($g['sweetness_option_id']) ? (int)$g['sweetness_option_id'] : null;
+                        $ice   = isset($g['ice_option_id']) ? (int)$g['ice_option_id'] : null;
+                        $ovs   = ensure_array($g['overrides'] ?? []);
+                        foreach ($ovs as $ov) {
+                            $ins->execute([
+                                $productId,
+                                (int)($ov['material_id'] ?? 0),
+                                (int)($ov['unit_id'] ?? 0),
+                                (float)($ov['quantity'] ?? 0),
+                                (string)($ov['step_category'] ?? 'base'),
+                                $cup, $sweet, $ice
+                            ]);
+                        }
+                    }
+                } else {
+                    // 扁平行列表：每条都自带条件 + 物料
+                    foreach ($adjInput as $ov) {
+                        $ins->execute([
+                            $productId,
+                            (int)($ov['material_id'] ?? 0),
+                            (int)($ov['unit_id'] ?? 0),
+                            (float)($ov['quantity'] ?? 0),
+                            (string)($ov['step_category'] ?? 'base'),
+                            isset($ov['cup_id']) ? (int)$ov['cup_id'] : null,
+                            isset($ov['sweetness_option_id']) ? (int)$ov['sweetness_option_id'] : null,
+                            isset($ov['ice_option_id']) ? (int)$ov['ice_option_id'] : null,
                         ]);
                     }
                 }
             }
 
-            // 4. (V2.2 GATING) 保存 Gating 规则
-            // 4a. 甜度 Gating
-            $pdo->prepare("DELETE FROM kds_product_sweetness_options WHERE product_id = ?")->execute([$productId]);
-            if (!empty($productData['allowed_sweetness_ids'])) {
-                $stmt_sweet = $pdo->prepare("INSERT INTO kds_product_sweetness_options (product_id, sweetness_option_id) VALUES (?, ?)");
-                foreach ($productData['allowed_sweetness_ids'] as $opt_id) {
-                    $stmt_sweet->execute([$productId, (int)$opt_id]);
-                }
-            }
-
-            // 4b. 冰量 Gating
-            $pdo->prepare("DELETE FROM kds_product_ice_options WHERE product_id = ?")->execute([$productId]);
-            if (!empty($productData['allowed_ice_ids'])) {
-                $stmt_ice = $pdo->prepare("INSERT INTO kds_product_ice_options (product_id, ice_option_id) VALUES (?, ?)");
-                foreach ($productData['allowed_ice_ids'] as $opt_id) {
-                    $stmt_ice->execute([$productId, (int)$opt_id]);
-                }
-            }
-            
             $pdo->commit();
-            send_json_response('success', '产品配方已成功保存！', ['new_id' => $productId]);
-            break;
+            send_json_response('success','产品数据已保存。', ['id'=>$productId]);
+        }
 
-        case 'delete_product':
-             $id = (int)($json_data['id'] ?? 0);
-             if (!$id) send_json_response('error', '无效的产品ID。', null, 400);
-             // 软删除
-             $stmt = $pdo->prepare("UPDATE kds_products SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?");
-             $stmt->execute([$id]);
-             send_json_response('success', '产品已成功删除。');
-             break;
+        case 'list_products': {
+            $rows = $pdo->query("
+                SELECT p.id, p.product_code, p.status_id, p.is_active,
+                       COALESCE(tzh.product_name,'') AS name_zh,
+                       COALESCE(tes.product_name,'') AS name_es
+                FROM kds_products p
+                LEFT JOIN kds_product_translations tzh ON tzh.product_id=p.id AND tzh.language_code='zh-CN'
+                LEFT JOIN kds_product_translations tes ON tes.product_id=p.id AND tes.language_code='es-ES'
+                WHERE p.deleted_at IS NULL
+                ORDER BY p.product_code ASC
+            ")->fetchAll(PDO::FETCH_ASSOC);
+            send_json_response('success','OK',$rows);
+        }
+
+        case 'delete_product': {
+            $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
+            if (!$id) send_json_response('error','无效的产品ID。', null, 400);
+            $pdo->prepare("UPDATE kds_products SET is_active=0, deleted_at=NOW() WHERE id=?")->execute([$id]);
+            send_json_response('success','产品已删除。');
+        }
 
         default:
-            send_json_response('error', '无效的操作请求。', null, 400);
+            send_json_response('error','无效的 action。', null, 400);
     }
-} catch (Exception $e) {
-    if ($pdo->inTransaction()) {
-        $pdo->rollBack();
-    }
-    http_response_code(500);
-    error_log("RMS API Error: " . $e->getMessage());
-    send_json_response('error', '服务器内部错误: ' . $e->getMessage());
-}
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) { $pdo->rollBack(); }
+    error_log('RMS product_handler error: '.$e->getMessage().' @'.$e->getFile().':'.$e->getLine());
+    send_json_response('error', '服务器内部错误：'.$e->getMessage(), null, 500);
 }
