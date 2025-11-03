@@ -1,5 +1,5 @@
 /**
- * TopTea · KDS · SOP (修复版 v7)
+ * TopTea · KDS · SOP (修复版 v10.1)
  * - 修复：在 fetchSop 的 error/fail 路径中，将 waiting 文本重置为初始状态。
  * - 修复：将 $.ajax.done/fail 中的 alert() 替换为 showKdsAlert(msg, true)。
  * - 修复：根据要求修改右上角提示语 (tip_waiting) 的内容。
@@ -15,7 +15,50 @@
  * - [V6 修复] 调整 renderCards 和 fetchSop 逻辑，以适应新的“等待查询”占位符。
  * - [V7 修复] 调整 renderLeft 函数，使其正确显示杯型 (cup_name)。
  * - [V8 修复] 调整 cardHTML，将数量和单位合并到 kds-measurement 容器中，实现在同一行显示。
+ * - [V9 修复] 调整卡片布局为 col-4 (一行3个)，并缩小图片和标题的内联样式。
+ * - [V10] 添加扫码功能 (startScan)
+ * - [V10.1] 修复 onScanSuccess，去除扫码结果中多余的引号
  */
+
+/**
+ * [V10.1] 扫码成功的回调 (必须是全局函数)
+ * @param {string} code 扫描到的二维码内容 (可能包含引号)
+ */
+window.onScanSuccess = function(code) {
+    if (code) {
+        // START OF FIX (V10.1)
+        // 净化扫码结果，去除前后可能存在的引号
+        let sanitizedCode = String(code).trim();
+        if (sanitizedCode.startsWith('"') && sanitizedCode.endsWith('"')) {
+            // 如果字符串以 " 开头并以 " 结尾，则去除它们
+            sanitizedCode = sanitizedCode.substring(1, sanitizedCode.length - 1);
+        }
+        // END OF FIX (V10.1)
+
+        const $input = $("#sku-input, #kds_code_input").first();
+        const $form = $("#sku-search-form");
+        if ($input.length && $form.length) {
+            $input.val(sanitizedCode); // <-- 使用净化后的 code
+            $form.trigger('submit'); // 触发KDS已有的submit事件
+        } else {
+            console.error("onScanSuccess: 找不到输入框或表单。");
+        }
+    }
+};
+
+/**
+ * [V10] 扫码失败或取消的回调 (必须是全局函数)
+ * @param {string} message 错误信息
+ */
+window.onScanError = function(message) {
+    if (typeof showKdsAlert === 'function') {
+        showKdsAlert("扫码失败: " + message, true);
+    } else {
+        alert("扫码失败: " + message);
+    }
+};
+
+
 $(function () {
   "use strict";
 
@@ -391,7 +434,7 @@ $(function () {
     removeLegacyHints();
   }
 
-  /* ========================= 卡片渲染 (V6 修复) ========================= */
+  /* ========================= 卡片渲染 (V9 修复) ========================= */
   const $tabWraps = {
     base: $wrapBase,
     mixing: $wrapMix,
@@ -406,13 +449,17 @@ $(function () {
   }
 
   function cardHTML(i, name, qty, unit) {
-    // [V8 修复] 更改HTML结构：合并数量和单位
+    // [V9 修复]
+    // 1. 栅格: col-xxl-6 col-xl-6 ... -> col-4 (强制3列)
+    // 2. 图片: width:140px;height:140px;...;margin:56px... -> width:100px;height:100px;...;margin:24px...
+    // 3. 标题: font-size:1.6rem -> font-size:1.25rem
+    // 4. 数量/单位字体大小在 kds_style.css 中修改
     return `
-      <div class="col-xxl-6 col-xl-6 col-lg-12 col-md-12">
+      <div class="col-4">
         <div class="kds-ingredient-card">
           <div class="step-number" style="position:absolute;left:16px;top:16px;background:#16a34a;color:#fff;width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-weight:900;">${i}</div>
-          <div class="kds-card-thumb" style="width:140px;height:140px;background:#6b7280;border-radius:.8rem;margin:56px auto 8px auto;"></div>
-          <div class="text-center" style="font-size:1.6rem;font-weight:900;letter-spacing:.6px;">${esc(
+          <div class="kds-card-thumb" style="width:100px;height:100px;background:#6b7280;border-radius:.8rem;margin:24px auto 8px auto;"></div>
+          <div class="text-center" style="font-size:1.25rem;font-weight:900;letter-spacing:.6px;">${esc(
             name
           )}</div>
           <div class="kds-measurement text-center">
@@ -591,6 +638,20 @@ $(function () {
   removeLegacyHints();
   // [V6 修复] 初始状态由 HTML 决定，JS不再调用 resetCardContainers
   // resetCardContainers(); 
+
+  // [V10] 绑定扫码按钮
+  $(document).on("click", "#btn-scan-qr", function() {
+      if (window.AndroidBridge && typeof window.AndroidBridge.startScan === 'function') {
+          try {
+              // 调用安卓接口，并指定全局回调函数的名字
+              window.AndroidBridge.startScan('onScanSuccess', 'onScanError');
+          } catch (e) {
+              showKdsAlert("调用扫码功能失败: " + e.message, true);
+          }
+      } else {
+          showKdsAlert("扫码功能不可用。请在 TopTea 安卓设备上使用。", true);
+      }
+  });
 
   // 表单提交 / 回车查询
   if ($form.length) {

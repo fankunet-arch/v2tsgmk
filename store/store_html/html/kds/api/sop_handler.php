@@ -1,6 +1,6 @@
 <?php
 /**
- * TopTea · KDS · SOP 查询接口 (V11.2 - Gating SQL 修复版)
+ * TopTea · KDS · SOP 查询接口 (V11.3 - KDS Cup Gating Fix)
  *
  * 1. [GATING] 选项门控验证 (P-Code -> kds_product_..._options)
  * 2. [L1] Layer 1: kds_product_recipes (基础配方)
@@ -9,6 +9,8 @@
  *
  * [V11.2 修复] 修正了 check_gating 和 get_available_options 中
  * 对 pos_item_variants.product_id 的错误引用。
+ * [V11.3 修复] 移除了 check_gating 中对 A-code (杯型) 的错误校验。
+ * KDS SOP 查询不应受 POS 销售规格 (pos_item_variants) 的限制。
  */
 declare(strict_types=1);
 header('Content-Type: application/json; charset=utf-8');
@@ -49,8 +51,7 @@ function id_by_code(PDO $pdo, string $table, string $col, $val): ?int {
     $id = $st->fetchColumn(); return $id ? (int)$id : null;
 }
 function get_product(PDO $pdo, string $p_code): ?array {
-    $st = $pdo->prepare("SELECT id, product_code, status_id, is_active, deleted_at FROM kds_products WHERE product_code=? LIMIT 1");
-    $st->execute([$p_code]); $r = $st->fetch(PDO::FETCH_ASSOC); return $r ?: null;
+    $st = $pdo->prepare("SELECT id, product_code, status_id, is_active, deleted_at FROM kds_products WHERE product_code=? LIMIT 1"); $st->execute([$p_code]); $r = $st->fetch(PDO::FETCH_ASSOC); return $r ?: null;
 }
 function norm_cat(string $c): string {
     $c = trim(mb_strtolower($c));
@@ -101,8 +102,11 @@ function get_sweet_names_bilingual(PDO $pdo, ?int $sid): array {
 
 // --- [GATING] 选项门控 ---
 function check_gating(PDO $pdo, int $pid, ?int $cup_id, ?int $ice_id, ?int $sweet_id) {
+    
+    /*
     // 1. 检查杯型 Gating
-    // [V11.2 GATING FIX]: 修复了 product_id 查询，使用正确的 JOIN 路径
+    // [V11.3 修复] 禁用此块。 KDS SOP 查询不应受 POS 销售规格 (pos_item_variants) 的限制。
+    // 只要 A-code 能通过 id_by_code 查到（即存在于 kds_cups），就应被视为有效。
     $cup_rules = $pdo->prepare("
         SELECT 1 FROM pos_item_variants piv
         JOIN pos_menu_items pmi ON piv.menu_item_id = pmi.id
@@ -113,7 +117,6 @@ function check_gating(PDO $pdo, int $pid, ?int $cup_id, ?int $ice_id, ?int $swee
     $cup_rules->execute([$pid]);
     if ($cup_rules->fetchColumn() !== false) { // 存在杯型规则
         if ($cup_id === null) throw new Exception("此产品需要杯型 (A-code)，但未提供。", 403);
-        // [V11.2 GATING FIX]: 修复了 product_id 查询
         $cup_ok = $pdo->prepare("
             SELECT 1 FROM pos_item_variants piv
             JOIN pos_menu_items pmi ON piv.menu_item_id = pmi.id
@@ -124,8 +127,9 @@ function check_gating(PDO $pdo, int $pid, ?int $cup_id, ?int $ice_id, ?int $swee
         $cup_ok->execute([$pid, $cup_id]);
         if ($cup_ok->fetchColumn() === false) throw new Exception("杯型 (A-code) 不适用于此产品。", 403);
     }
+    */
 
-    // 2. 检查冰量 Gating
+    // 2. 检查冰量 Gating (此逻辑正确)
     $ice_rules = $pdo->prepare("SELECT ice_option_id FROM kds_product_ice_options WHERE product_id = ?");
     $ice_rules->execute([$pid]);
     $allowed_ice_ids = $ice_rules->fetchAll(PDO::FETCH_COLUMN);
@@ -134,7 +138,7 @@ function check_gating(PDO $pdo, int $pid, ?int $cup_id, ?int $ice_id, ?int $swee
         if (!in_array($ice_id, $allowed_ice_ids)) throw new Exception("冰量 (M-code) 不适用于此产品。", 403);
     }
 
-    // 3. 检查甜度 Gating
+    // 3. 检查甜度 Gating (此逻辑正确)
     $sweet_rules = $pdo->prepare("SELECT sweetness_option_id FROM kds_product_sweetness_options WHERE product_id = ?");
     $sweet_rules->execute([$pid]);
     $allowed_sweet_ids = $sweet_rules->fetchAll(PDO::FETCH_COLUMN);

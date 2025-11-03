@@ -3,7 +3,7 @@
       <div class="kds-left-header">
         <form id="sku-search-form" class="d-flex gap-2">
             <div class="input-group">
-                <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+                <span class="input-group-text" id="btn-scan-qr" role="button" title="点击扫码"><i class="bi bi-upc-scan"></i></span>
                 <input type="text" class="form-control" id="sku-input" placeholder="输入产品编码..." required data-i18n-key="placeholder_sku">
             </div>
             <button class="btn btn-primary" type="submit" style="background-color: var(--brand-500); border-color: var(--brand-500);"><i class="bi bi-search"></i></button>
