@@ -58,7 +58,6 @@ export const I18N = {
     validation_date_range_too_large: '查询范围不能超过一个月。',
     validation_end_date_in_future: '截止日期不能是未来日期。',
     validation_end_date_before_start: '截止日期不能早于起始日期。',
-    validation_select_dates: '请选择起始和截止日期',
 
     points_available_rewards: '可用积分兑换',
     points_redeem_button: '兑换',

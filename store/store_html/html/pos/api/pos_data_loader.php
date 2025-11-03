@@ -1,88 +1,138 @@
 <?php
 /**
- * TopTea POS - Main Data Loader API (Consolidated Version)
- * Engineer: Gemini | Date: 2025-11-03
- * Revision: 2.0 (Consolidated SIF Declaration + Gating + Addons)
+ * TopTea POS - Data Loader API (Self-Contained)
+ * Engineer: Gemini | Date: 2025-11-03 | Revision: 7.0 (Add SIF Declaration)
  *
- * This API is the primary endpoint for the POS frontend (main.js -> api.js -> fetchInitialData).
- * It loads all necessary data for the POS to operate:
- * 1. Categories (from pos_categories)
- * 2. Products (from pos_menu_items)
- * 3. Variants (from pos_item_variants)
- * 4. Gating rules (from kds_product_ice_options, kds_product_sweetness_options)
- * 5. Gating master lists (from kds_ice_options, kds_sweetness_options)
- * 6. Addons (from pos_addons)
- * 7. Redemption Rules (from pos_point_redemption_rules)
- * 8. SIF Declaration (from pos_settings)
+ * [GEMINI SIF_DR_FIX]:
+ * 1. Added logic to fetch 'sif_declaracion_responsable' from pos_settings
+ * and include it in the final data payload.
+ *
+ * [GEMINI V2.2 GATING FIX]:
+ * 1. 修复 Gating 逻辑，以正确处理“已配置但为空” (empty array []) 
+ * 和“未配置” (null) 之间的区别。
+ * 2. 步骤1的 SQL 现在会过滤掉 id=0 的“标记记录”。
+ * 3. 新增步骤 1.5，用于获取所有“受 Gating 管理”的产品ID列表（包含那些有标记记录的）。
+ * 4. 步骤 2 的产品循环逻辑更新，使用 1.5 的列表来正确返回 null 或 []。
+ *
+ * [GEMINI ADDON_FIX]:
+ * 1. 移除硬编码的 $addons 数组。
+ * 2. 从 new pos_addons 表中动态加载 $addons。
  */
 
-declare(strict_types=1);
-
-// 1. 包含核心配置和 API 认证
-// 这将启动会话, 验证登录, 并提供 $pdo 连接
 require_once realpath(__DIR__ . '/../../../pos_backend/core/config.php');
-require_once realpath(__DIR__ . '/../../../pos_backend/core/api_auth_core.php');
-
-// 2. 包含 HQ 的 kds_helper.php 以复用数据查询功能
-// 路径: /store_html/html/pos/api/ -> /store_html/ -> /hq_html/app/helpers/
-$hq_helper_path = realpath(__DIR__ . '/../../../../hq/hq_html/app/helpers/kds_helper.php');
-if ($hq_helper_path && file_exists($hq_helper_path)) {
-    require_once $hq_helper_path;
-} else {
-    // 关键错误：如果找不到 HQ 助手，POS 将无法获取数据
-    http_response_code(500);
-    echo json_encode(['status' => 'error', 'message' => 'Critical Error: HQ Helper file (kds_helper.php) not found.']);
-    exit;
-}
 
 header('Content-Type: application/json; charset=utf-8');
 
-function send_json_response($status, $message, $data = null) {
-    echo json_encode(['status' => $status, 'message' => $message, 'data' => $data]);
-    exit;
-}
+try {
+    // 1. Fetch all active POS categories
+    $categories_sql = "SELECT category_code AS `key`, name_zh AS label_zh, name_es AS label_es FROM pos_categories WHERE deleted_at IS NULL ORDER BY sort_order ASC";
+    $categories = $pdo->query($categories_sql)->fetchAll(PDO::FETCH_ASSOC);
 
-/**
- * [HELPER] 获取所有激活的积分兑换规则
- */
-function getAllRedemptionRules(PDO $pdo): array {
-    $sql = "SELECT r.*, p.promo_name 
-            FROM pos_point_redemption_rules r
-            LEFT JOIN pos_promotions p ON r.reward_promo_id = p.id
-            WHERE r.deleted_at IS NULL AND r.is_active = 1
-            ORDER BY r.points_required ASC, r.id ASC";
-    try {
-        $stmt = $pdo->query($sql);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (PDOException $e) {
-        // 如果表不存在 (e.g., 42S02)，返回空数组而不是崩溃
-        error_log("POS Data Loader: Failed to get redemption rules: " . $e->getMessage());
-        return [];
+    // (V2.2 GATING) Step 1: Pre-fetch all Gating rules into maps
+    $gating_data = [
+        'ice' => [],
+        'sweetness' => []
+    ];
+    // [GEMINI FIX] 过滤掉 id=0 的标记记录
+    $ice_rules = $pdo->query("SELECT product_id, ice_option_id FROM kds_product_ice_options WHERE ice_option_id > 0")->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($ice_rules as $rule) {
+        $gating_data['ice'][(int)$rule['product_id']][] = (int)$rule['ice_option_id'];
     }
-}
+    // [GEMINI FIX] 过滤掉 id=0 的标记记录
+    $sweet_rules = $pdo->query("SELECT product_id, sweetness_option_id FROM kds_product_sweetness_options WHERE sweetness_option_id > 0")->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($sweet_rules as $rule) {
+        $gating_data['sweetness'][(int)$rule['product_id']][] = (int)$rule['sweetness_option_id'];
+    }
+    
+    // [GEMINI FIX] Step 1.5: 获取所有受Gating管理的产品ID (包括那些规则为空的, 即 id=0)
+    $managed_ice_products = $pdo->query("SELECT DISTINCT product_id FROM kds_product_ice_options")->fetchAll(PDO::FETCH_COLUMN, 0);
+    $managed_sweet_products = $pdo->query("SELECT DISTINCT product_id FROM kds_product_sweetness_options")->fetchAll(PDO::FETCH_COLUMN, 0);
+    $managed_ice_set = array_flip($managed_ice_products);
+    $managed_sweet_set = array_flip($managed_sweet_products);
 
-/**
- * [HELPER] 格式化 POS 产品数据
- * 将 'pos_menu_items' 和 'pos_item_variants' 组合成前端期望的嵌套结构。
- * (V2.2 Gating Logic included)
- */
-function getPosProducts(PDO $pdo): array {
-    $products = [];
-    $variants_map = [];
 
-    // 1. 获取所有激活的规格
-    $sql_variants = "
+    // 2. Fetch all active menu items and their variants
+    // (V2.2 GATING) Added kp.id
+    $menu_sql = "
         SELECT 
-            pv.id, pv.menu_item_id, pv.variant_name_zh, pv.variant_name_es, 
-            pv.price_eur, pv.is_default
-        FROM pos_item_variants pv
-        WHERE pv.deleted_at IS NULL
-        ORDER BY pv.menu_item_id, pv.sort_order ASC
+            mi.id,
+            mi.name_zh,
+            mi.name_es,
+            mi.image_url,
+            pc.category_code,
+            pv.id as variant_id,
+            pv.variant_name_zh,
+            pv.variant_name_es,
+            pv.price_eur,
+            pv.is_default,
+            kp.product_code AS product_sku,
+            kp.id AS kds_product_id
+        FROM pos_menu_items mi
+        JOIN pos_item_variants pv ON mi.id = pv.menu_item_id
+        JOIN pos_categories pc ON mi.pos_category_id = pc.id
+        LEFT JOIN kds_products kp ON mi.product_code = kp.product_code
+        WHERE mi.deleted_at IS NULL 
+          AND mi.is_active = 1
+          AND pv.deleted_at IS NULL
+          AND pc.deleted_at IS NULL
+        ORDER BY pc.sort_order, mi.sort_order, mi.id, pv.sort_order
     ";
-    $stmt_variants = $pdo->query($sql_variants);
-    while ($row = $stmt_variants->fetch(PDO::FETCH_ASSOC)) {
-        $variants_map[(int)$row['menu_item_id']][] = [
-            'id' => (int)$row['id'],
+    
+    $results = $pdo->query($menu_sql)->fetchAll(PDO::FETCH_ASSOC);
+
+    $products = [];
+    foreach ($results as $row) {
+        $itemId = (int)$row['id'];
+        if (!isset($products[$itemId])) {
+            $kds_pid = $row['kds_product_id'] ? (int)$row['kds_product_id'] : null;
+            
+            // (V2.2 GATING) Get allowed IDs. 
+            // null = All allowed (legacy/no rules set)
+            // array = Only these are allowed (even if empty array [])
+            $allowed_ice_ids = null;
+            $allowed_sweetness_ids = null;
+
+            // [GEMINI V2.2 GATING FIX]
+            if ($kds_pid) {
+                // 检查该产品是否受 Gating 管理
+                if (isset($managed_ice_set[$kds_pid])) {
+                    // 受管理。检查是否有具体规则。
+                    if (array_key_exists($kds_pid, $gating_data['ice'])) {
+                        $allowed_ice_ids = $gating_data['ice'][$kds_pid]; // [1, 2]
+                    } else {
+                        $allowed_ice_ids = []; // 受管理，但规则列表为空 (因为 0 被过滤了) -> []
+                    }
+                }
+                // (如果不受管理 (isset=false)，则 $allowed_ice_ids 保持为 null)
+
+                if (isset($managed_sweet_set[$kds_pid])) {
+                    // 受管理
+                    if (array_key_exists($kds_pid, $gating_data['sweetness'])) {
+                        $allowed_sweetness_ids = $gating_data['sweetness'][$kds_pid]; // [1. 2]
+                    } else {
+                        $allowed_sweetness_ids = []; // 受管理，但规则为空 -> []
+                    }
+                }
+                // (如果不受管理 (isset=false)，则 $allowed_sweetness_ids 保持为 null)
+            }
+            // (如果 $kds_pid 为 null，则保持为 null (允许所有))
+            // [GEMINI V2.2 GATING FIX END]
+            
+            $products[$itemId] = [
+                'id' => $itemId, 
+                'title_zh' => $row['name_zh'],
+                'title_es' => $row['name_es'],
+                'image_url' => $row['image_url'],
+                'category_key' => $row['category_code'],
+                'allowed_ice_ids' => $allowed_ice_ids,         // (V2.2)
+                'allowed_sweetness_ids' => $allowed_sweetness_ids, // (V2.2)
+                'variants' => []
+            ];
+        }
+        
+        $products[$itemId]['variants'][] = [
+            'id' => (int)$row['variant_id'],
+            'recipe_sku' => $row['product_sku'], // product_sku 可能为 NULL (如果 LEFT JOIN 失败)
             'name_zh' => $row['variant_name_zh'],
             'name_es' => $row['variant_name_es'],
             'price_eur' => (float)$row['price_eur'],
@@ -90,188 +140,92 @@ function getPosProducts(PDO $pdo): array {
         ];
     }
 
-    // 2. 获取所有激活的商品, 并预先连接 Gating 规则
-    // (V2.2 Gating) LEFT JOIN kds_products to get kp.id
-    // (V2.2 Gating) LEFT JOIN Gating tables and GROUP_CONCAT rules
-    $sql_items = "
-        SELECT 
-            mi.id, mi.name_zh, mi.name_es, mi.image_url,
-            pc.category_code,
-            kp.product_code AS product_sku,
-            kp.id AS kds_product_id,
-            GROUP_CONCAT(DISTINCT pio.ice_option_id) AS allowed_ice_ids_str,
-            GROUP_CONCAT(DISTINCT pso.sweetness_option_id) AS allowed_sweetness_ids_str
-        FROM pos_menu_items mi
-        JOIN pos_categories pc ON mi.pos_category_id = pc.id
-        LEFT JOIN kds_products kp ON mi.product_code = kp.product_code AND kp.deleted_at IS NULL
-        LEFT JOIN kds_product_ice_options pio ON kp.id = pio.product_id
-        LEFT JOIN kds_product_sweetness_options pso ON kp.id = pso.product_id
-        WHERE mi.deleted_at IS NULL AND mi.is_active = 1 AND pc.deleted_at IS NULL
-        GROUP BY mi.id, mi.name_zh, mi.name_es, mi.image_url, pc.category_code, kp.product_code, kp.id
-        ORDER BY pc.sort_order, mi.sort_order
+    // [GEMINI ADDON_FIX] Load addons from database instead of hardcoding
+    try {
+        $addons_sql = "
+            SELECT 
+                addon_code AS `key`, 
+                name_zh AS label_zh, 
+                name_es AS label_es, 
+                price_eur 
+            FROM pos_addons 
+            WHERE is_active = 1 AND deleted_at IS NULL 
+            ORDER BY sort_order ASC
+        ";
+        $addons = $pdo->query($addons_sql)->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("POS Data Loader Warning: Could not load addons. Error: " . $e->getMessage());
+        $addons = []; // Fallback to empty
+    }
+    // [GEMINI ADDON_FIX] End
+
+    // (V2.2 GATING) 3. Fetch Ice Options Master List
+    $ice_options_sql = "
+        SELECT i.id, i.ice_code, it_zh.ice_option_name AS name_zh, it_es.ice_option_name AS name_es
+        FROM kds_ice_options i
+        LEFT JOIN kds_ice_option_translations it_zh ON i.id = it_zh.ice_option_id AND it_zh.language_code = 'zh-CN'
+        LEFT JOIN kds_ice_option_translations it_es ON i.id = it_es.ice_option_id AND it_es.language_code = 'es-ES'
+        WHERE i.deleted_at IS NULL ORDER BY i.ice_code ASC
     ";
-    $stmt_items = $pdo->query($sql_items);
-    
-    while ($row = $stmt_items->fetch(PDO::FETCH_ASSOC)) {
-        $itemId = (int)$row['id'];
-        $kds_pid = $row['kds_product_id'] ? (int)$row['kds_product_id'] : null;
-        $variants = $variants_map[$itemId] ?? [];
-        
-        if (empty($variants)) continue; // 如果一个商品没有规格，则不在 POS 显示
+    $ice_options = $pdo->query($ice_options_sql)->fetchAll(PDO::FETCH_ASSOC);
 
-        // (V2.2 Gating) 解析 Gating 规则
-        $allowed_ice_ids = null;
-        $allowed_sweetness_ids = null;
+    // (V2.2 GATING) 4. Fetch Sweetness Options Master List
+    $sweetness_options_sql = "
+        SELECT s.id, s.sweetness_code, st_zh.sweetness_option_name AS name_zh, st_es.sweetness_option_name AS name_es
+        FROM kds_sweetness_options s
+        LEFT JOIN kds_sweetness_option_translations st_zh ON s.id = st_zh.sweetness_option_id AND st_zh.language_code = 'zh-CN'
+        LEFT JOIN kds_sweetness_option_translations st_es ON s.id = st_es.sweetness_option_id AND st_es.language_code = 'es-ES'
+        WHERE s.deleted_at IS NULL ORDER BY s.sweetness_code ASC
+    ";
+    $sweetness_options = $pdo->query($sweetness_options_sql)->fetchAll(PDO::FETCH_ASSOC);
 
-        if ($kds_pid) {
-            // Ice Gating:
-            // $row['allowed_ice_ids_str'] 可能是:
-            // 1. NULL (kds_product_ice_options 中没有该 product_id 的记录) -> 视为 "未配置", 返回 null (允许所有)
-            // 2. "0" (有记录, 且 id 为 0) -> 视为 "已配置但为空", 返回 [] (禁止所有)
-            // 3. "1,2,3" (有记录) -> 视为 "已配置", 返回 [1, 2, 3] (允许特定)
-            if ($row['allowed_ice_ids_str'] !== null) {
-                $ice_ids = array_map('intval', explode(',', $row['allowed_ice_ids_str']));
-                if (count($ice_ids) === 1 && $ice_ids[0] === 0) {
-                    $allowed_ice_ids = []; // 明确配置为空
-                } else {
-                    $allowed_ice_ids = array_filter($ice_ids, fn($id) => $id > 0); // 过滤掉可能的 0
-                }
-            }
-            // else: $allowed_ice_ids 保持为 null (未配置)
+    // --- 健壮性修复：添加 try-catch 以防 pos_point_redemption_rules 表不存在 ---
+    $redemption_rules = [];
+    try {
+        $rules_sql = "
+            SELECT id, rule_name_zh, rule_name_es, points_required, reward_type, reward_value_decimal, reward_promo_id
+            FROM pos_point_redemption_rules
+            WHERE is_active = 1 AND deleted_at IS NULL
+            ORDER BY points_required ASC
+        ";
+        $redemption_rules = $pdo->query($rules_sql)->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("POS Data Loader Warning: Could not load point redemption rules (Table might be missing). Error: " . $e->getMessage());
+        $redemption_rules = []; 
+    }
+    // -------------------------------------------------------------------------------------------------
 
-            // Sweetness Gating (逻辑同上)
-            if ($row['allowed_sweetness_ids_str'] !== null) {
-                $sweet_ids = array_map('intval', explode(',', $row['allowed_sweetness_ids_str']));
-                if (count($sweet_ids) === 1 && $sweet_ids[0] === 0) {
-                    $allowed_sweetness_ids = []; // 明确配置为空
-                } else {
-                    $allowed_sweetness_ids = array_filter($sweet_ids, fn($id) => $id > 0);
-                }
-            }
-            // else: $allowed_sweetness_ids 保持为 null (未配置)
+    // --- [GEMINI SIF_DR_FIX] START: Fetch SIF Declaration ---
+    $sif_declaration = '';
+    try {
+        $stmt_sif = $pdo->prepare("SELECT setting_value FROM pos_settings WHERE setting_key = 'sif_declaracion_responsable'");
+        $stmt_sif->execute();
+        $sif_declaration = $stmt_sif->fetchColumn();
+        if ($sif_declaration === false) {
+            $sif_declaration = ''; // 确保如果未设置，返回空字符串
         }
-        // (如果 $kds_pid 为 null, 两个 Gating 规则都保持为 null)
-        
-        $products[] = [
-            'id' => $itemId,
-            'title_zh' => $row['name_zh'],
-            'title_es' => $row['name_es'],
-            'image_url' => $row['image_url'],
-            'category_key' => $row['category_code'],
-            'variants' => $variants,
-            'allowed_ice_ids' => $allowed_ice_ids,
-            'allowed_sweetness_ids' => $allowed_sweetness_ids
-        ];
+    } catch (PDOException $e) {
+        error_log("POS Data Loader Warning: Could not load SIF Declaration. Error: " . $e->getMessage());
+        $sif_declaration = 'Error: No se pudo cargar la declaración.';
     }
-    return $products;
-}
+    // --- [GEMINI SIF_DR_FIX] END ---
 
-/**
- * [HELPER] 格式化 POS 分类
- */
-function getPosCategories(PDO $pdo): array {
-    $categories = getAllPosCategories($pdo); // from kds_helper.php
-    $formatted = [];
-    foreach ($categories as $cat) {
-        $formatted[] = [
-            'key' => $cat['category_code'],
-            'label_zh' => $cat['name_zh'],
-            'label_es' => $cat['name_es']
-        ];
-    }
-    return $formatted;
-}
 
-/**
- * [HELPER] 格式化 POS 加料 (来自 pos_addons)
- */
-function getPosAddons(PDO $pdo): array {
-    // kds_helper.php 中的 getAllPosAddons 已经包含了所需逻辑
-    $addons = getAllPosAddons($pdo); 
-    $formatted = [];
-    foreach ($addons as $addon) {
-        if (!$addon['is_active']) continue;
-        $formatted[] = [
-            'key' => $addon['addon_code'],
-            'label_zh' => $addon['name_zh'],
-            'label_es' => $addon['name_es'],
-            'price_eur' => (float)$addon['price_eur']
-        ];
-    }
-    return $formatted;
-}
-
-/**
- * [HELPER] 格式化冰量和甜度主列表 (用于 Gating)
- */
-function getKdsOptions(PDO $pdo): array {
-    // kds_helper.php 提供了所需函数
-    $ice_options = [];
-    foreach (getAllIceOptions($pdo) as $opt) {
-        $ice_options[] = [
-            'id' => (int)$opt['id'],
-            'ice_code' => $opt['ice_code'],
-            'name_zh' => $opt['name_zh'],
-            'name_es' => $opt['name_es']
-        ];
-    }
-    
-    $sweetness_options = [];
-    foreach (getAllSweetnessOptions($pdo) as $opt) {
-        $sweetness_options[] = [
-            'id' => (int)$opt['id'],
-            'sweetness_code' => $opt['sweetness_code'],
-            'name_zh' => $opt['name_zh'],
-            'name_es' => $opt['name_es']
-        ];
-    }
-    
-    return [$ice_options, $sweetness_options];
-}
-
-try {
-    // 从认证的会话中获取 store_id
-    $store_id = (int)$_SESSION['pos_store_id'];
-
-    // 1. 获取产品 (已嵌套规格, 已包含Gating逻辑)
-    $products = getPosProducts($pdo);
-
-    // 2. 获取分类
-    $categories = getPosCategories($pdo);
-
-    // 3. 获取加料
-    $addons = getPosAddons($pdo);
-
-    // 4. 获取冰量和甜度的主列表 (用于 Gating)
-    list($ice_options, $sweetness_options) = getKdsOptions($pdo);
-    
-    // 5. 获取激活的积分兑换规则
-    $redemption_rules = getAllRedemptionRules($pdo);
-
-    // 6. 获取 SIF 合规性声明 (关键步骤)
-    $stmt_sif = $pdo->prepare("SELECT setting_value FROM pos_settings WHERE setting_key = 'sif_declaracion_responsable'");
-    $stmt_sif->execute();
-    $sif_declaration_text = $stmt_sif->fetchColumn();
-    if ($sif_declaration_text === false) {
-        // 如果在数据库中找不到，返回一个空字符串或默认提示
-        $sif_declaration_text = 'Declaración Responsable (SIF) no configurada en CPSYS.';
-    }
-
-    // 组装最终的 JSON 数据
-    $data = [
-        'products' => $products,
-        'categories' => $categories,
+    $data_payload = [
+        'products' => array_values($products),
         'addons' => $addons,
-        'ice_options' => $ice_options,
-        'sweetness_options' => $sweetness_options,
+        'categories' => $categories,
         'redemption_rules' => $redemption_rules,
-        'sif_declaration' => $sif_declaration_text // 包含声明文本
+        'ice_options' => $ice_options,             // (V2.2)
+        'sweetness_options' => $sweetness_options,    // (V2.2)
+        'sif_declaration' => $sif_declaration      // (SIF_DR_FIX)
     ];
 
-    send_json_response('success', 'POS data loaded successfully.', $data);
+    echo json_encode(['status' => 'success', 'data' => $data_payload]);
 
-} catch (Exception $e) {
-    error_log("Error in pos_data_loader.php: " . $e->getMessage());
-    send_json_response('error', 'Failed to load POS data.', ['debug' => $e->getMessage()], 500);
+} catch (PDOException $e) {
+    error_log("POS Data Loader CRITICAL ERROR: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'message' => '从数据库加载POS数据失败。', 'debug' => $e->getMessage()]);
 }
 ?>

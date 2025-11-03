@@ -6,7 +6,7 @@
  *
  * [GEMINI SIF_DR_FIX]:
  * 1. Added new modal #sifDeclarationModal at the end of the body.
- * 2. Added new button #btn_show_sif_declaration inside #settingsOffcanvas.
+ * 2. Added new button #btn_show_sif_declaration in settings panel.
  *
  * [FIX 2.0 - HTML]
  * 1. 修复 #customizeOffcanvas 中的 DOM ID，使其与 ui.js 脚本匹配。
@@ -308,7 +308,7 @@ $cache_version = time();
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <div class_ = "table-responsive">
+        <div class="table-responsive">
           <table class="table table-sm" id="eodHistoryTable">
             <thead>
               <tr>
@@ -391,7 +391,7 @@ $cache_version = time();
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <pre id="sif_declaration_content"></pre>
+        <pre id="sif_declaration_content" style="white-space: pre-wrap; word-wrap: break-word; font-size: 0.8rem;"></pre>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
