@@ -5,7 +5,7 @@
  * - 高峰模式：按钮/开关均可用
  * - 兼容旧键：POS_HAND_MODE / POS_LEFTY / POS_RIGHTY
  * - 额外桥接：点击包含 hand_mode 的整行也会触发切换（防止“选中了但未触发事件”）
- * Revision: 2.4.0 (RMS V2.2 - Gating State)
+ * Revision: 2.5.0 (Add SIF Declaration State)
  */
 
 //////////////////// I18N ////////////////////
@@ -58,6 +58,7 @@ export const I18N = {
     validation_date_range_too_large: '查询范围不能超过一个月。',
     validation_end_date_in_future: '截止日期不能是未来日期。',
     validation_end_date_before_start: '截止日期不能早于起始日期。',
+    validation_select_dates: '请选择起始和截止日期',
 
     points_available_rewards: '可用积分兑换',
     points_redeem_button: '兑换',
@@ -149,6 +150,7 @@ export const STATE = {
   printTemplates: {}, // --- CORE ADDITION: Store for print templates ---
   iceOptions: [], // (V2.2 GATING)
   sweetnessOptions: [], // (V2.2 GATING)
+  sifDeclaration: '', // [GEMINI SIF_DR_FIX]
   activeCouponCode: '',
   activeRedemptionRuleId: null,
   calculatedCart: { cart: [], subtotal: 0, discount_amount: 0, final_total: 0 },

@@ -1,8 +1,12 @@
 <?php
 /**
  * TopTea POS - Main Entry Point
- * Engineer: Gemini | Date: 2025-10-30
- * Revision: 3.5 (Enhance Top Bar User Info Display)
+ * Engineer: Gemini | Date: 2025-11-03
+ * Revision: 3.6 (Add SIF Declaration Modal)
+ *
+ * [GEMINI SIF_DR_FIX]:
+ * 1. Added new modal #sifDeclarationModal at the end of the body.
+ * 2. Added new button #btn_show_sif_declaration inside #settingsOffcanvas.
  *
  * [FIX 2.0 - HTML]
  * 1. 修复 #customizeOffcanvas 中的 DOM ID，使其与 ui.js 脚本匹配。
@@ -164,7 +168,9 @@ $cache_version = time();
     </div>
   </div>
 
-  <div class="offcanvas offcanvas-bottom offcanvas-sheet" tabindex="-1" id="settingsOffcanvas"><div class="offcanvas-header"><h5 class="offcanvas-title" data-i18n="settings">设置</h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div><div class="offcanvas-body"><div class="list-group"><div class="list-group-item"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="setting_peak_mode"><label class="form-check-label" for="setting_peak_mode" data-i18n="peak_mode">高峰模式 (对比增强)</label></div><small class="form-text text-muted" data-i18n="peak_mode_desc">左侧菜单变白，并在前方功能按钮保留返回图示，避免误操。</small></div><div class="list-group-item"><div class="form-check"><input class="form-check-input" type="radio" name="hand_mode" id="setting_lefty_mode" value="lefty-mode"><label class="form-check-label" for="setting_lefty_mode" data-i18n="lefty_mode">左手模式 (点菜按钮靠左)</label></div></div><div class="list-group-item"><div class="form-check"><input class="form-check-input" type="radio" name="hand_mode" id="setting_righty_mode" value="righty-mode"><label class="form-check-label" for="setting_righty_mode" data-i18n="righty_mode">右手模式 (点菜按钮靠右)</label></div></div></div></div></div>
+  <div class="offcanvas offcanvas-bottom offcanvas-sheet" tabindex="-1" id="settingsOffcanvas"><div class="offcanvas-header"><h5 class="offcanvas-title" data-i18n="settings">设置</h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div><div class="offcanvas-body"><div class="list-group"><div class="list-group-item"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="setting_peak_mode"><label class="form-check-label" for="setting_peak_mode" data-i18n="peak_mode">高峰模式 (对比增强)</label></div><small class="form-text text-muted" data-i18n="peak_mode_desc">左侧菜单变白，并在前方功能按钮保留返回图示，避免误操。</small></div><div class="list-group-item"><div class="form-check"><input class="form-check-input" type="radio" name="hand_mode" id="setting_lefty_mode" value="lefty-mode"><label class="form-check-label" for="setting_lefty_mode" data-i18n="lefty_mode">左手模式 (点菜按钮靠左)</label></div></div><div class="list-group-item"><div class="form-check"><input class="form-check-input" type="radio" name="hand_mode" id="setting_righty_mode" value="righty-mode"><label class="form-check-label" for="setting_righty_mode" data-i18n="righty_mode">右手模式 (点菜按钮靠右)</label></div></div>
+  <div class="list-group-item"><button type="button" class="btn btn-link text-decoration-none px-0" id="btn_show_sif_declaration">查看合规性声明 (Ver Declaración Responsable)</button></div>
+  </div></div></div>
 
   <div class="offcanvas offcanvas-end offcanvas-sheet" tabindex="-1" id="txnQueryOffcanvas"><div class="offcanvas-header"><h5 class="offcanvas-title" data-i18n="txn_query">交易查询</h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div><div class="offcanvas-body p-0" id="txn_list_container"></div></div>
 
@@ -377,6 +383,22 @@ $cache_version = time();
   </div>
 </div>
 
+<div class="modal fade" id="sifDeclarationModal" tabindex="-1" aria-labelledby="sifDeclarationModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content modal-sheet">
+      <div class="modal-header">
+        <h5 class="modal-title" id="sifDeclarationModalLabel">Declaración Responsable (SIF)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="sif_declaration_content"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="toast-container position-fixed bottom-0 end-0 p-3"><div id="sys_toast" class="toast" role="alert"><div class="toast-body" id="toast_msg"></div></div></div>
 
 <script type="module" src="./assets/js/main.js?v=<?php echo $cache_version; ?>"></script>

@@ -1,210 +1,386 @@
 <?php
 /**
- * TopTea POS - Data Loader API (Self-Contained)
- * Engineer: Gemini | Date: 2025-11-02 | Revision: 6.0 (RMS V2.2 - Gating Implementation)
+ * Toptea HQ - cpsys
+ * Main Entry Point
+ * Engineer: Gemini | Date: 2025-11-03 | Revision: 17.0 (Add SIF Declaration Route)
  *
- * [GEMINI V2.2 GATING FIX]:
- * 1. 修复 Gating 逻辑，以正确处理“已配置但为空” (empty array []) 
- * 和“未配置” (null) 之间的区别。
- * 2. 步骤1的 SQL 现在会过滤掉 id=0 的“标记记录”。
- * 3. 新增步骤 1.5，用于获取所有“受 Gating 管理”的产品ID列表（包含那些有标记记录的）。
- * 4. 步骤 2 的产品循环逻辑更新，使用 1.5 的列表来正确返回 null 或 []。
+ * [GEMINI SIF_DR_FIX]:
+ * 1. Added 'sif_declaration' route.
  *
- * [GEMINI ADDON_FIX]:
- * 1. 移除硬编码的 $addons 数组。
- * 2. 从 new pos_addons 表中动态加载 $addons。
+ * [GEMINI 500_ERROR_FIX V14.3]:
+ * 1. Removed stray '}' at the end of the file which caused a fatal syntax error.
+ *
+ * [GEMINI CACHE_FIX V6.2.4]:
+ * 1. Renamed 'pos_print_template_management.js' to 'pos_print_template_editor.js'
+ * to defeat all caching mechanisms.
+ *
+ * [GEMINI 500_ERROR_FIX V14.1]:
+ * 1. Removed function definition 'getAllPosAddons' from this router file.
+ * 2. This function is now correctly placed in 'kds_helper.php'.
  */
+require_once realpath(__DIR__ . '/../../core/auth_core.php');
+header('Content-Type: text/html; charset=utf-8');
+require_once realpath(__DIR__ . '/../../core/config.php');
+require_once APP_PATH . '/helpers/kds_helper.php';
+require_once APP_PATH . '/helpers/auth_helper.php';
 
-require_once realpath(__DIR__ . '/../../../pos_backend/core/config.php');
-
-header('Content-Type: application/json; charset=utf-8');
-
-try {
-    // 1. Fetch all active POS categories
-    $categories_sql = "SELECT category_code AS `key`, name_zh AS label_zh, name_es AS label_es FROM pos_categories WHERE deleted_at IS NULL ORDER BY sort_order ASC";
-    $categories = $pdo->query($categories_sql)->fetchAll(PDO::FETCH_ASSOC);
-
-    // (V2.2 GATING) Step 1: Pre-fetch all Gating rules into maps
-    $gating_data = [
-        'ice' => [],
-        'sweetness' => []
-    ];
-    // [GEMINI FIX] 过滤掉 id=0 的标记记录
-    $ice_rules = $pdo->query("SELECT product_id, ice_option_id FROM kds_product_ice_options WHERE ice_option_id > 0")->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($ice_rules as $rule) {
-        $gating_data['ice'][(int)$rule['product_id']][] = (int)$rule['ice_option_id'];
-    }
-    // [GEMINI FIX] 过滤掉 id=0 的标记记录
-    $sweet_rules = $pdo->query("SELECT product_id, sweetness_option_id FROM kds_product_sweetness_options WHERE sweetness_option_id > 0")->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($sweet_rules as $rule) {
-        $gating_data['sweetness'][(int)$rule['product_id']][] = (int)$rule['sweetness_option_id'];
-    }
-    
-    // [GEMINI FIX] Step 1.5: 获取所有受Gating管理的产品ID (包括那些规则为空的, 即 id=0)
-    $managed_ice_products = $pdo->query("SELECT DISTINCT product_id FROM kds_product_ice_options")->fetchAll(PDO::FETCH_COLUMN, 0);
-    $managed_sweet_products = $pdo->query("SELECT DISTINCT product_id FROM kds_product_sweetness_options")->fetchAll(PDO::FETCH_COLUMN, 0);
-    $managed_ice_set = array_flip($managed_ice_products);
-    $managed_sweet_set = array_flip($managed_sweet_products);
-
-
-    // 2. Fetch all active menu items and their variants
-    // (V2.2 GATING) Added kp.id
-    $menu_sql = "
-        SELECT 
-            mi.id,
-            mi.name_zh,
-            mi.name_es,
-            mi.image_url,
-            pc.category_code,
-            pv.id as variant_id,
-            pv.variant_name_zh,
-            pv.variant_name_es,
-            pv.price_eur,
-            pv.is_default,
-            kp.product_code AS product_sku,
-            kp.id AS kds_product_id
-        FROM pos_menu_items mi
-        JOIN pos_item_variants pv ON mi.id = pv.menu_item_id
-        JOIN pos_categories pc ON mi.pos_category_id = pc.id
-        LEFT JOIN kds_products kp ON mi.product_code = kp.product_code
-        WHERE mi.deleted_at IS NULL 
-          AND mi.is_active = 1
-          AND pv.deleted_at IS NULL
-          AND pc.deleted_at IS NULL
-        ORDER BY pc.sort_order, mi.sort_order, mi.id, pv.sort_order
-    ";
-    
-    $results = $pdo->query($menu_sql)->fetchAll(PDO::FETCH_ASSOC);
-
-    $products = [];
-    foreach ($results as $row) {
-        $itemId = (int)$row['id'];
-        if (!isset($products[$itemId])) {
-            $kds_pid = $row['kds_product_id'] ? (int)$row['kds_product_id'] : null;
-            
-            // (V2.2 GATING) Get allowed IDs. 
-            // null = All allowed (legacy/no rules set)
-            // array = Only these are allowed (even if empty array [])
-            $allowed_ice_ids = null;
-            $allowed_sweetness_ids = null;
-
-            // [GEMINI V2.2 GATING FIX]
-            if ($kds_pid) {
-                // 检查该产品是否受 Gating 管理
-                if (isset($managed_ice_set[$kds_pid])) {
-                    // 受管理。检查是否有具体规则。
-                    if (array_key_exists($kds_pid, $gating_data['ice'])) {
-                        $allowed_ice_ids = $gating_data['ice'][$kds_pid]; // [1, 2]
-                    } else {
-                        $allowed_ice_ids = []; // 受管理，但规则列表为空 (因为 0 被过滤了) -> []
-                    }
-                }
-                // (如果不受管理 (isset=false)，则 $allowed_ice_ids 保持为 null)
-
-                if (isset($managed_sweet_set[$kds_pid])) {
-                    // 受管理
-                    if (array_key_exists($kds_pid, $gating_data['sweetness'])) {
-                        $allowed_sweetness_ids = $gating_data['sweetness'][$kds_pid]; // [1. 2]
-                    } else {
-                        $allowed_sweetness_ids = []; // 受管理，但规则为空 -> []
-                    }
-                }
-                // (如果不受管理 (isset=false)，则 $allowed_sweetness_ids 保持为 null)
-            }
-            // (如果 $kds_pid 为 null，则保持为 null (允许所有))
-            // [GEMINI V2.2 GATING FIX END]
-            
-            $products[$itemId] = [
-                'id' => $itemId, 
-                'title_zh' => $row['name_zh'],
-                'title_es' => $row['name_es'],
-                'image_url' => $row['image_url'],
-                'category_key' => $row['category_code'],
-                'allowed_ice_ids' => $allowed_ice_ids,         // (V2.2)
-                'allowed_sweetness_ids' => $allowed_sweetness_ids, // (V2.2)
-                'variants' => []
-            ];
-        }
-        
-        $products[$itemId]['variants'][] = [
-            'id' => (int)$row['variant_id'],
-            'recipe_sku' => $row['product_sku'], // product_sku 可能为 NULL (如果 LEFT JOIN 失败)
-            'name_zh' => $row['variant_name_zh'],
-            'name_es' => $row['variant_name_es'],
-            'price_eur' => (float)$row['price_eur'],
-            'is_default' => (bool)$row['is_default']
-        ];
-    }
-
-    // [GEMINI ADDON_FIX] Load addons from database instead of hardcoding
-    try {
-        $addons_sql = "
-            SELECT 
-                addon_code AS `key`, 
-                name_zh AS label_zh, 
-                name_es AS label_es, 
-                price_eur 
-            FROM pos_addons 
-            WHERE is_active = 1 AND deleted_at IS NULL 
-            ORDER BY sort_order ASC
-        ";
-        $addons = $pdo->query($addons_sql)->fetchAll(PDO::FETCH_ASSOC);
-    } catch (PDOException $e) {
-        error_log("POS Data Loader Warning: Could not load addons. Error: " . $e->getMessage());
-        $addons = []; // Fallback to empty
-    }
-    // [GEMINI ADDON_FIX] End
-
-    // (V2.2 GATING) 3. Fetch Ice Options Master List
-    $ice_options_sql = "
-        SELECT i.id, i.ice_code, it_zh.ice_option_name AS name_zh, it_es.ice_option_name AS name_es
-        FROM kds_ice_options i
-        LEFT JOIN kds_ice_option_translations it_zh ON i.id = it_zh.ice_option_id AND it_zh.language_code = 'zh-CN'
-        LEFT JOIN kds_ice_option_translations it_es ON i.id = it_es.ice_option_id AND it_es.language_code = 'es-ES'
-        WHERE i.deleted_at IS NULL ORDER BY i.ice_code ASC
-    ";
-    $ice_options = $pdo->query($ice_options_sql)->fetchAll(PDO::FETCH_ASSOC);
-
-    // (V2.2 GATING) 4. Fetch Sweetness Options Master List
-    $sweetness_options_sql = "
-        SELECT s.id, s.sweetness_code, st_zh.sweetness_option_name AS name_zh, st_es.sweetness_option_name AS name_es
-        FROM kds_sweetness_options s
-        LEFT JOIN kds_sweetness_option_translations st_zh ON s.id = st_zh.sweetness_option_id AND st_zh.language_code = 'zh-CN'
-        LEFT JOIN kds_sweetness_option_translations st_es ON s.id = st_es.sweetness_option_id AND st_es.language_code = 'es-ES'
-        WHERE s.deleted_at IS NULL ORDER BY s.sweetness_code ASC
-    ";
-    $sweetness_options = $pdo->query($sweetness_options_sql)->fetchAll(PDO::FETCH_ASSOC);
-
-    // --- 健壮性修复：添加 try-catch 以防 pos_point_redemption_rules 表不存在 ---
-    $redemption_rules = [];
-    try {
-        $rules_sql = "
-            SELECT id, rule_name_zh, rule_name_es, points_required, reward_type, reward_value_decimal, reward_promo_id
-            FROM pos_point_redemption_rules
-            WHERE is_active = 1 AND deleted_at IS NULL
-            ORDER BY points_required ASC
-        ";
-        $redemption_rules = $pdo->query($rules_sql)->fetchAll(PDO::FETCH_ASSOC);
-    } catch (PDOException $e) {
-        error_log("POS Data Loader Warning: Could not load point redemption rules (Table might be missing). Error: " . $e->getMessage());
-        $redemption_rules = []; 
-    }
-    // -------------------------------------------------------------------------------------------------
-
-    $data_payload = [
-        'products' => array_values($products),
-        'addons' => $addons,
-        'categories' => $categories,
-        'redemption_rules' => $redemption_rules,
-        'ice_options' => $ice_options,             // (V2.2)
-        'sweetness_options' => $sweetness_options    // (V2.2)
-    ];
-
-    echo json_encode(['status' => 'success', 'data' => $data_payload]);
-
-} catch (PDOException $e) {
-    error_log("POS Data Loader CRITICAL ERROR: " . $e->getMessage());
-    http_response_code(500);
-    echo json_encode(['status' => 'error', 'message' => '从数据库加载POS数据失败。', 'debug' => $e->getMessage()]);
+if (!isset($pdo)) {
+    die("Critical Error: Core configuration could not be loaded.");
 }
+
+$page = $_GET['page'] ?? 'dashboard';
+$page_js = null;
+
+// Allow product managers to also access the new RMS page
+if (($_SESSION['role_id'] ?? null) !== ROLE_SUPER_ADMIN && !in_array($page, ['dashboard', 'profile', 'rms_product_management'])) {
+     $page = 'access_denied';
+}
+
+function getAllRedemptionRules(PDO $pdo): array {
+    $sql = "SELECT r.*, p.promo_name 
+            FROM pos_point_redemption_rules r
+            LEFT JOIN pos_promotions p ON r.reward_promo_id = p.id
+            WHERE r.deleted_at IS NULL
+            ORDER BY r.points_required ASC, r.id ASC";
+    try {
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        if ($e->getCode() == '42S02') { 
+             error_log("Warning: pos_point_redemption_rules table not found when fetching rules for routing. " . $e->getMessage());
+             return [];
+        }
+        throw $e;
+    }
+}
+
+function getAllPrintTemplates(PDO $pdo): array {
+    try {
+        $stmt = $pdo->query("SELECT * FROM pos_print_templates ORDER BY template_type, template_name ASC");
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        if ($e->getCode() == '42S02') {
+             error_log("Warning: pos_print_templates table not found. " . $e->getMessage());
+             return [];
+        }
+        throw $e;
+    }
+}
+
+// (V2.2) Helper to get global rules
+function getAllGlobalRules(PDO $pdo): array {
+    try {
+        $stmt = $pdo->query("SELECT * FROM kds_global_adjustment_rules ORDER BY priority ASC, id ASC");
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        // Handle if table doesn't exist yet
+        if ($e->getCode() == '42S02') { 
+             error_log("Warning: kds_global_adjustment_rules table not found. " . $e->getMessage());
+             return [];
+        }
+        throw $e;
+    }
+}
+
+// [GEMINI 500_ERROR_FIX] Function 'getAllPosAddons' was moved to kds_helper.php
+
+
+switch ($page) {
+    case 'dashboard':
+        $page_title = '仪表盘';
+        $content_view = APP_PATH . '/views/cpsys/dashboard_view.php';
+        break;
+
+    case 'rms_product_management':
+        $page_title = 'RMS - 产品配方 (L1/L3)';
+        $base_products = getAllBaseProducts($pdo);
+        $material_options = getAllMaterials($pdo);
+        $unit_options = getAllUnits($pdo);
+        $cup_options = getAllCups($pdo);
+        $sweetness_options = getAllSweetnessOptions($pdo);
+        $ice_options = getAllIceOptions($pdo);
+        $status_options = getAllStatuses($pdo);
+        $content_view = APP_PATH . '/views/cpsys/rms/rms_product_management_view.php';
+        $page_js = 'rms/rms_product_management.js';
+        break;
+
+    // --- (V2.2) NEW ROUTE ---
+    case 'rms_global_rules':
+        if (($_SESSION['role_id'] ?? null) !== ROLE_SUPER_ADMIN) {
+             $page = 'access_denied';
+             break;
+        }
+        $page_title = 'RMS - 全局规则 (L2)';
+        $global_rules = getAllGlobalRules($pdo);
+        // Load data needed for the form dropdowns
+        $material_options = getAllMaterials($pdo);
+        $unit_options = getAllUnits($pdo);
+        $cup_options = getAllCups($pdo);
+        $sweetness_options = getAllSweetnessOptions($pdo);
+        $ice_options = getAllIceOptions($pdo);
+        // (V2.2 PATH FIX)
+        $content_view = APP_PATH . '/views/cpsys/rms/rms_global_rules_view.php';
+        $page_js = 'rms/rms_global_rules.js';
+        break;
+    // --- END NEW ROUTE ---
+
+    case 'expiry_management':
+        $page_title = '效期管理';
+        $expiry_items = getAllExpiryItems($pdo);
+        $content_view = APP_PATH . '/views/cpsys/expiry_management_view.php';
+        break;
+
+    case 'warehouse_stock_management':
+        $page_title = '总仓库存';
+        $stock_items = getWarehouseStock($pdo);
+        $content_view = APP_PATH . '/views/cpsys/warehouse_stock_management_view.php';
+        $page_js = 'warehouse_stock_management.js';
+        break;
+        
+    case 'stock_allocation':
+        $page_title = '库存调拨';
+        $stores = getAllStores($pdo);
+        $materials = getAllMaterials($pdo);
+        $content_view = APP_PATH . '/views/cpsys/stock_allocation_view.php';
+        $page_js = 'stock_allocation.js';
+        break;
+
+    case 'store_stock_view': 
+        $page_title = '门店库存';
+        $stock_data = getAllStoreStock($pdo);
+        $content_view = APP_PATH . '/views/cpsys/store_stock_view.php';
+        break;
+
+    case 'pos_menu_management':
+        $page_title = 'POS 管理 - 菜单管理';
+        $menu_items = getAllMenuItems($pdo);
+        $pos_categories = getAllPosCategories($pdo);
+        $content_view = APP_PATH . '/views/cpsys/pos_menu_management_view.php';
+        $page_js = 'pos_menu_management.js';
+        break;
+        
+    case 'pos_variants_management':
+        $item_id = filter_input(INPUT_GET, 'item_id', FILTER_VALIDATE_INT);
+        if (!$item_id) { die("无效的商品ID。"); }
+        $menu_item = getMenuItemById($pdo, $item_id);
+        if (!$menu_item) { die("未找到指定的商品。"); }
+        $page_title = 'POS 管理 - 管理规格';
+        $variants = getAllVariantsByMenuItemId($pdo, $item_id);
+        $recipes = getAllProductRecipesForSelect($pdo);
+        $content_view = APP_PATH . '/views/cpsys/pos_variants_management_view.php';
+        $page_js = 'pos_variants_management.js';
+        break;
+
+    case 'pos_category_management':
+        $page_title = '字典管理 - POS分类';
+        $pos_categories = getAllPosCategories($pdo);
+        $content_view = APP_PATH . '/views/cpsys/pos_category_management_view.php';
+        $page_js = 'pos_category_management.js';
+        break;
+
+    // [GEMINI ADDON_FIX] Start new route
+    case 'pos_addon_management':
+        $page_title = 'POS 管理 - 加料管理';
+        $addons = getAllPosAddons($pdo);
+        $materials = getAllMaterials($pdo); // For the material link dropdown
+        $content_view = APP_PATH . '/views/cpsys/pos_addon_management_view.php';
+        $page_js = 'pos_addon_management.js';
+        break;
+    // [GEMINI ADDON_FIX] End new route
+        
+    case 'pos_invoice_list':
+        $page_title = 'POS 管理 - 票据查询';
+        $invoices = getAllInvoices($pdo);
+        $content_view = APP_PATH . '/views/cpsys/pos_invoice_list_view.php';
+        break;
+    
+    case 'pos_invoice_detail':
+        $invoice_id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+        if (!$invoice_id) { die("无效的票据ID。"); }
+        $invoice_data = getInvoiceDetails($pdo, $invoice_id);
+        if (!$invoice_data) { die("未找到指定的票据。"); }
+        $page_title = 'POS 票据详情: ' . htmlspecialchars($invoice_data['series'] . '-' . $invoice_data['number']);
+        $content_view = APP_PATH . '/views/cpsys/pos_invoice_detail_view.php';
+        $page_js = 'pos_invoice_management.js';
+        break;
+
+    case 'pos_promotion_management':
+        $page_title = 'POS 管理 - 营销活动管理';
+        $promotions = getAllPromotions($pdo);
+        $menu_items_for_select = getAllMenuItemsForSelect($pdo);
+        echo "<script>window.menuItemsForSelect = " . json_encode($menu_items_for_select) . ";</script>";
+        $content_view = APP_PATH . '/views/cpsys/pos_promotion_management_view.php';
+        $page_js = 'pos_promotion_management.js';
+        break;
+
+    case 'pos_eod_reports':
+        $page_title = 'POS 管理 - 日结报告';
+        $eod_reports = getAllEodReports($pdo);
+        $content_view = APP_PATH . '/views/cpsys/pos_eod_reports_view.php';
+        break;
+
+    case 'pos_member_level_management':
+        $page_title = 'POS 管理 - 会员等级';
+        $member_levels = getAllMemberLevels($pdo);
+        $promotions_for_select = getAllPromotions($pdo); 
+        $content_view = APP_PATH . '/views/cpsys/pos_member_level_management_view.php';
+        $page_js = 'pos_member_level_management.js';
+        break;
+
+    case 'pos_member_management':
+        $page_title = 'POS 管理 - 会员列表';
+        $members = getAllMembers($pdo);
+        $member_levels = getAllMemberLevels($pdo); 
+        $content_view = APP_PATH . '/views/cpsys/pos_member_management_view.php';
+        $page_js = 'pos_member_management.js';
+        break;
+
+    case 'pos_member_settings':
+        $page_title = 'POS 管理 - 会员积分设置';
+        $content_view = APP_PATH . '/views/cpsys/pos_member_settings_view.php';
+        $page_js = 'pos_member_settings.js'; 
+        break;
+
+    case 'pos_point_redemption_rules':
+        $page_title = 'POS 管理 - 积分兑换规则';
+        $rules = getAllRedemptionRules($pdo);
+        $promotions_for_select = getAllPromotions($pdo);
+        $content_view = APP_PATH . '/views/cpsys/pos_point_redemption_rules_view.php';
+        $page_js = 'pos_point_redemption_rules.js';
+        break;
+
+    case 'pos_print_template_management':
+        $page_title = '系统设置 - 打印模板管理';
+        $templates = getAllPrintTemplates($pdo);
+        $content_view = APP_PATH . '/views/cpsys/pos_print_template_management_view.php';
+        // --- [GEMINI CACHE_FIX V6.2.4] ---
+        // 更改加载的 JS 文件名
+        $page_js = 'pos_print_template_editor.js';
+        // --- [END CACHE_FIX] ---
+        break;
+        
+    case 'pos_print_template_variables':
+        $page_title = '系统设置 - 打印模板变量';
+        $default_templates = [];
+        $stmt = $pdo->query("SELECT template_type, template_content FROM pos_print_templates WHERE store_id IS NULL AND is_active = 1");
+        while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $default_templates[$row['template_type']] = $row['template_content'];
+        }
+        $content_view = APP_PATH . '/views/cpsys/pos_print_template_variables_view.php';
+        break;
+    
+    // [GEMINI SIF_DR_FIX]
+    case 'sif_declaration':
+        $page_title = '系统设置 - 合规性声明 (SIF)';
+        $stmt = $pdo->prepare("SELECT setting_value FROM pos_settings WHERE setting_key = 'sif_declaracion_responsable'");
+        $stmt->execute();
+        $sif_declaration_text = $stmt->fetchColumn();
+        $content_view = APP_PATH . '/views/cpsys/sif_declaration_view.php';
+        $page_js = 'sif_declaration.js';
+        break;
+
+    case 'cup_management':
+        $page_title = '字典管理 - 杯型';
+        $cups = getAllCups($pdo);
+        $content_view = APP_PATH . '/views/cpsys/cup_management_view.php';
+        $page_js = 'cup_management.js';
+        break;
+
+    case 'material_management':
+        $page_title = '字典管理 - 物料';
+        $materials = getAllMaterials($pdo);
+        $unit_options = getAllUnits($pdo);
+        $content_view = APP_PATH . '/views/cpsys/material_management_view.php';
+        $page_js = 'material_management.js';
+        break;
+
+    case 'unit_management':
+        $page_title = '字典管理 - 单位';
+        $units = getAllUnits($pdo);
+        $content_view = APP_PATH . '/views/cpsys/unit_management_view.php';
+        $page_js = 'unit_management.js';
+        break;
+
+    case 'ice_option_management':
+        $page_title = '字典管理 - 冰量选项';
+        $ice_options = getAllIceOptions($pdo);
+        $content_view = APP_PATH . '/views/cpsys/ice_option_management_view.php';
+        $page_js = 'ice_option_management.js';
+        break;
+
+    case 'sweetness_option_management':
+        $page_title = '字典管理 - 甜度选项';
+        $sweetness_options = getAllSweetnessOptions($pdo);
+        $content_view = APP_PATH . '/views/cpsys/sweetness_option_management_view.php';
+        $page_js = 'sweetness_option_management.js';
+        break;
+
+    case 'product_status_management':
+        $page_title = '字典管理 - 产品状态';
+        $statuses = getAllStatuses($pdo);
+        $content_view = APP_PATH . '/views/cpsys/product_status_management_view.php';
+        $page_js = 'product_status_management.js';
+        break;
+
+    case 'user_management':
+        $page_title = '系统设置 - 用户管理';
+        $users = getAllUsers($pdo);
+        $roles = getAllRoles($pdo);
+        $content_view = APP_PATH . '/views/cpsys/user_management_view.php';
+        $page_js = 'user_management.js';
+        break;
+
+    case 'store_management':
+        $page_title = '系统设置 - 门店管理';
+        $stores = getAllStores($pdo);
+        $content_view = APP_PATH . '/views/cpsys/store_management_view.php';
+        $page_js = 'store_management.js';
+        break;
+
+    case 'kds_user_management':
+        $page_title = 'KDS 账户管理';
+        $store_id = filter_input(INPUT_GET, 'store_id', FILTER_VALIDATE_INT);
+        if (!$store_id) { die("无效的门店ID。"); }
+        $store_data = getStoreById($pdo, $store_id);
+        if (!$store_data) { die("未找到指定的门店。"); }
+        $kds_users = getAllKdsUsersByStoreId($pdo, $store_id);
+        $content_view = APP_PATH . '/views/cpsys/kds_user_management_view.php';
+        $page_js = 'kds_user_management.js';
+        break;
+
+    case 'profile':
+        $page_title = '个人资料';
+        $current_user = getUserById($pdo, $_SESSION['user_id']);
+        $content_view = APP_PATH . '/views/cpsys/profile_view.php';
+        $page_js = 'profile.js';
+        break;
+        
+    case 'access_denied':
+        $page_title = '访问被拒绝';
+        $content_view = APP_PATH . '/views/cpsys/access_denied_view.php';
+        break;
+
+    default:
+        http_response_code(404);
+        $page_title = '页面未找到';
+        $content_view = null;
+}
+
+// --- Render Layout ---
+if (isset($content_view) || $page === 'access_denied' || http_response_code() === 404) {
+    if ($page !== 'access_denied' && http_response_code() !== 404 && (!isset($content_view) || !file_exists($content_view))) {
+         $page_title = '错误';
+         $content_view = APP_PATH . '/views/cpsys/error_view.php';
+         $error_details = 'Expected view file not found: ' . ($content_view ?? 'N/A');
+    } elseif (http_response_code() === 404 && !isset($content_view)) {
+         $page_title = '页面未找到';
+         $content_view = APP_PATH . '/views/cpsys/404_view.php';
+    }
+    include APP_PATH . '/views/cpsys/layouts/main.php';
+
+} else {
+    die("Critical Error: No view file determined and not a recognized error state.");
+}
+
+// [GEMINI 500_ERROR_FIX V14.3] Removed stray '}' that was here.
 ?>

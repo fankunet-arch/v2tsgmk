@@ -39,6 +39,9 @@ export async function fetchInitialData() {
         // (V2.2 GATING) Populate master lists
         STATE.iceOptions = result.data.ice_options || [];
         STATE.sweetnessOptions = result.data.sweetness_options || [];
+        
+        // [GEMINI SIF_DR_FIX]
+        STATE.sifDeclaration = result.data.sif_declaration || '';
 
         if (!STATE.active_category_key && STATE.categories.length > 0) {
             STATE.active_category_key = STATE.categories[0].key;
@@ -46,6 +49,9 @@ export async function fetchInitialData() {
     }
     // --- CORE ADDITION: Fetch print templates after main data ---
     await fetchPrintTemplates();
+    
+    // [GEMINI SIF_DR_FIX] Return the result so main.js can access it
+    return result;
 }
 
 /**

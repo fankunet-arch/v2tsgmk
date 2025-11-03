@@ -345,6 +345,20 @@ function bindEvents() {
   // --- Settings ---
   $('#settingsOffcanvas input').on('change', handleSettingChange);
 
+  // --- [GEMINI SIF_DR_FIX] START: Bind SIF Declaration Button ---
+  $document.on('click', '#btn_show_sif_declaration', function() {
+      const modalEl = document.getElementById('sifDeclarationModal');
+      const contentEl = document.getElementById('sif_declaration_content');
+      if (modalEl && contentEl) {
+          contentEl.textContent = STATE.sifDeclaration || 'Declaración no cargada o no definida.';
+          const modal = new bootstrap.Modal(modalEl);
+          modal.show();
+      } else {
+          toast('Error: SIF Modal not found.');
+      }
+  });
+  // --- [GEMINI SIF_DR_FIX] END ---
+
   console.log("Event bindings complete."); 
 }
 
@@ -366,7 +380,18 @@ async function initApplication() {
         console.log("EOD check passed or not required.");
 
         console.log("Fetching initial data...");
-        await fetchInitialData();
+        // [GEMINI SIF_DR_FIX] START: Store SIF declaration from API
+        // Await the fetch so we can access its result
+        const initialDataResult = await fetchInitialData(); 
+        
+        // Check the result and store the declaration text in our global STATE
+        if (initialDataResult && initialDataResult.data && initialDataResult.data.sif_declaration) {
+            STATE.sifDeclaration = initialDataResult.data.sif_declaration;
+        } else {
+            console.warn('SIF Declaration not found in data loader response.');
+            STATE.sifDeclaration = 'Error: Declaración no cargada.'; // Set error text
+        }
+        // [GEMINI SIF_DR_FIX] END
         console.log("Initial data fetched (or attempted). STATE after fetch:", JSON.parse(JSON.stringify(STATE)));
 
         // --- CORE FIX: Removed the fatal error check for empty products/categories ---

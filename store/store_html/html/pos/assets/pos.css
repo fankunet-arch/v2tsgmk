@@ -284,3 +284,14 @@ body.contrast-boost{
   flex: 0 0 20% !important;
   max-width: 20% !important;
 }
+
+/* [GEMINI SIF_DR_FIX] Style for pre-formatted text in modal */
+#sif_declaration_content {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 0.8rem;
+    background-color: var(--surface-2);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+}
