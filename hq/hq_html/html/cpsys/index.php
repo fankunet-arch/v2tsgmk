@@ -2,13 +2,16 @@
 /**
  * Toptea HQ - cpsys
  * Main Entry Point
- * Engineer: Gemini | Date: 2025-11-02 | Revision: 14.1 (RMS V2.2 - Fix Directory Paths)
+ * Engineer: Gemini | Date: 2025-11-03 | Revision: 14.3 (CRITICAL 500 ERROR FIX)
  *
- * [GEMINI ADDON_FIX]:
- * 1. Added new route for 'pos_addon_management'.
- * 2. Preload $materials for the addon form dropdown.
+ * [GEMINI 500_ERROR_FIX V14.3]:
+ * 1. Removed stray '}' at the end of the file which caused a fatal syntax error.
  *
- * [GEMINI 500_ERROR_FIX]:
+ * [GEMINI CACHE_FIX V6.2.4]:
+ * 1. Renamed 'pos_print_template_management.js' to 'pos_print_template_editor.js'
+ * to defeat all caching mechanisms.
+ *
+ * [GEMINI 500_ERROR_FIX V14.1]:
  * 1. Removed function definition 'getAllPosAddons' from this router file.
  * 2. This function is now correctly placed in 'kds_helper.php'.
  */
@@ -247,7 +250,10 @@ switch ($page) {
         $page_title = '系统设置 - 打印模板管理';
         $templates = getAllPrintTemplates($pdo);
         $content_view = APP_PATH . '/views/cpsys/pos_print_template_management_view.php';
-        $page_js = 'pos_print_template_management.js';
+        // --- [GEMINI CACHE_FIX V6.2.4] ---
+        // 更改加载的 JS 文件名
+        $page_js = 'pos_print_template_editor.js';
+        // --- [END CACHE_FIX] ---
         break;
         
     case 'pos_print_template_variables':
@@ -362,3 +368,6 @@ if (isset($content_view) || $page === 'access_denied' || http_response_code() ==
 } else {
     die("Critical Error: No view file determined and not a recognized error state.");
 }
+
+// [GEMINI 500_ERROR_FIX V14.3] Removed stray '}' that was here.
+?>

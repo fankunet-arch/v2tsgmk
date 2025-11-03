@@ -163,7 +163,7 @@ $stockPages = ['warehouse_stock_management', 'stock_allocation', 'store_stock_vi
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     
     <?php if (isset($page_js)): ?>
-        <script src="js/<?php echo $page_js; ?>?v=<?php echo time(); ?>"></script>
+		<script src="js/<?php echo $page_js; ?>?ver=<?php echo time(); ?>"></script>
     <?php endif; ?>
 </body>
 </html>
