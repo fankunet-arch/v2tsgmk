@@ -1,14 +1,391 @@
 /**
  * TopTea HQ - JavaScript for POS Print Template Management
- * Version: 3.0.0
- * Engineer: Gemini | Date: 2025-10-30
- * Update: Added physical_size field.
+ * Version: 6.2.0 (CRITICAL FIX)
+ * Engineer: Gemini | Date: 2025-11-03
+ * Update:
+ * 1. CRITICAL FIX: Fixed typo in updatePreviewPaperSize ('-' instead of '+')
+ * which caused all preview rendering to fail.
+ * 2. Simplified updatePreviewPaperSize logic to use val() directly.
  */
 $(document).ready(function() {
-    const dataDrawer = new bootstrap.Offcanvas(document.getElementById('data-drawer'));
+    const dataDrawerEl = document.getElementById('data-drawer');
+    const dataDrawer = new bootstrap.Offcanvas(dataDrawerEl);
     const form = $('#data-form');
     const drawerLabel = $('#drawer-label');
     const dataIdInput = $('#data-id');
+    const hiddenJsonInput = $('#template_content_json');
+    
+    // Visual Editor Elements
+    const canvas = $('#visual-editor-canvas');
+    const templates = $('#visual-editor-templates');
+    const previewPane = $('#template-preview-pane');
+    const previewPaper = $('#template-preview-paper'); // The actual paper div
+    const btnAddLoop = $('#btn-add-loop');
+    const physicalSizeSelect = $('#physical_size');
+
+    let mainSortable = null;
+    let loopSortables = []; // Array to hold nested Sortable instances
+
+    // Mock data for the real-time preview
+    const mockData = {
+        "{store_name}": "TopTea 演示门店",
+        "{store_address}": "Calle Ficticia 123, 28080 Madrid",
+        "{store_tax_id}": "B12345678",
+        "{invoice_number}": "A-10001",
+        "{issued_at}": new Date().toLocaleString('sv-SE'),
+        "{cashier_name}": "Gemini Admin",
+        "{qr_code}": "[QR Code Placeholder]",
+        "{subtotal}": "10.00 €",
+        "{discount_amount}": "1.00 €",
+        "{final_total}": "9.00 €",
+        "{taxable_base}": "8.18 €",
+        "{vat_amount}": "0.82 €",
+        "{payment_methods}": "现金 (Cash): 10.00 €",
+        "{change}": "1.00 €",
+        // Loop variables
+        "{item_name}": "烤布蕾黑糖啵啵奶茶",
+        "{item_variant}": "大杯",
+        "{item_qty}": "1",
+        "{item_unit_price}": "5.50",
+        "{item_total_price}": "5.50",
+        "{item_customizations}": "少冰/七分糖",
+        // EOD variables
+        "{report_date}": new Date().toLocaleDateString('sv-SE'),
+        "{user_name}": "Gemini Admin",
+        "{print_time}": new Date().toLocaleString('sv-SE'),
+        "{transactions_count}": "150",
+        "{system_gross_sales}": "1500.00 €",
+        "{system_discounts}": "-50.00 €",
+        "{system_net_sales}": "1450.00 €",
+        "{system_tax}": "131.82 €",
+        "{system_cash}": "800.00 €",
+        "{system_card}": "650.00 €",
+        "{system_platform}": "0.00 €",
+        "{counted_cash}": "801.00 €",
+        "{cash_discrepancy}": "1.00 € (盈余)",
+        // Expiry Label variables
+        "{material_name}": "茉莉绿茶",
+        "{material_name_es}": "Té Verde Jazmín",
+        "{opened_at_time}": new Date().toLocaleString('sv-SE').substring(0, 16),
+        "{expires_at_time}": new Date(Date.now() + 4 * 3600 * 1000).toLocaleString('sv-SE').substring(0, 16),
+        "{time_left}": "4小时0分钟",
+        "{operator_name}": "Gemini Admin",
+        // Cup Sticker variables
+        "{cup_order_number}": "A-101",
+        "{remark}": "打包"
+    };
+
+    /**
+     * ===================================================================
+     * Visual Editor Core Functions
+     * ===================================================================
+     */
+
+    // 1. Initialize the main drag-and-drop canvas
+    function initializeSortable() {
+        if (mainSortable) mainSortable.destroy();
+        loopSortables.forEach(s => s.destroy());
+        loopSortables = [];
+
+        mainSortable = new Sortable(canvas[0], {
+            group: 'main',
+            animation: 150,
+            handle: '.drag-handle',
+            ghostClass: 'sortable-ghost',
+            onEnd: updateAll, // Update on drag end
+        });
+
+        canvas.find('.visual-editor-loop-canvas').each(function() {
+            initializeLoopSortable(this);
+        });
+    }
+
+    // 2. Initialize a nested (loop) sortable instance
+    function initializeLoopSortable(element) {
+        const loopSortable = new Sortable(element, {
+            group: 'loop-items', // Note: This group name must match the items being dragged
+            animation: 150,
+            handle: '.drag-handle',
+            ghostClass: 'sortable-ghost',
+            onEnd: updateAll, // Update on drag end
+        });
+        loopSortables.push(loopSortable);
+    }
+
+    // 3. Create a new visual row from a template ID
+    function createRow(templateId) {
+        let $clone;
+        if (templateId === '.visual-editor-row[data-type="items_loop"]') {
+            if (btnAddLoop.prop('disabled')) {
+                // Button is disabled, so do nothing. This prevents duplicate loops.
+                return; 
+            }
+            $clone = templates.find(templateId).clone();
+            canvas.append($clone);
+            initializeLoopSortable($clone.find('.visual-editor-loop-canvas')[0]);
+        } else {
+             // Handle all other components
+            $clone = templates.find(templateId).clone();
+            canvas.append($clone);
+        }
+        updateAll(); // Update preview and buttons
+    }
+    
+    // 4. (LOAD) Build the visual editor from a JSON string
+    function renderVisualEditor(jsonString) {
+        canvas.empty();
+        let items = [];
+        try {
+            items = JSON.parse(jsonString || '[]');
+        } catch (e) { items = []; }
+
+        items.forEach(item => {
+            let $row;
+            switch (item.type) {
+                case 'text':
+                    $row = templates.find('.visual-editor-row[data-type="text"]').clone();
+                    $row.find('.prop-value').val(item.value || '');
+                    $row.find('.prop-align').val(item.align || 'left');
+                    $row.find('.prop-size').val(item.size || 'normal');
+                    break;
+                case 'kv':
+                    $row = templates.find('.visual-editor-row[data-type="kv"]').clone();
+                    $row.find('.prop-key').val(item.key || '');
+                    $row.find('.prop-value').val(item.value || '');
+                    $row.find('.prop-bold').prop('checked', !!item.bold_value);
+                    break;
+                case 'divider':
+                    $row = templates.find('.visual-editor-row[data-type="divider"]').clone();
+                    $row.find('.prop-char').val(item.char || '-');
+                    break;
+                case 'feed':
+                    $row = templates.find('.visual-editor-row[data-type="feed"]').clone();
+                    $row.find('.prop-lines').val(item.lines || 1);
+                    break;
+                case 'qr_code':
+                    $row = templates.find('.visual-editor-row[data-type="qr_code"]').clone();
+                    $row.find('.prop-value').val(item.value || '{qr_code}');
+                    $row.find('.prop-align').val(item.align || 'center');
+                    break;
+                case 'cut':
+                    $row = templates.find('.visual-editor-row[data-type="cut"]').clone();
+                    break;
+                case 'items_loop':
+                    $row = templates.find('.visual-editor-row[data-type="items_loop"]').clone();
+                    const $loopCanvas = $row.find('.visual-editor-loop-canvas');
+                    if (item.items && Array.isArray(item.items)) {
+                        item.items.forEach(loopItem => {
+                            let $loopRow;
+                            if (loopItem.type === 'text') {
+                                $loopRow = templates.find('.visual-editor-row[data-type="text"]').clone();
+                                $loopRow.find('.prop-value').val(loopItem.value || '');
+                                $loopRow.find('.prop-align').val(loopItem.align || 'left');
+                                $loopRow.find('.prop-size').val(loopItem.size || 'normal');
+                            } else if (loopItem.type === 'kv') {
+                                $loopRow = templates.find('.visual-editor-row[data-type="kv"]').clone();
+                                $loopRow.find('.prop-key').val(loopItem.key || '');
+                                $loopRow.find('.prop-value').val(loopItem.value || '');
+                                $loopRow.find('.prop-bold').prop('checked', !!loopItem.bold_value);
+                            }
+                            // 移除循环组件中不支持的组件
+                            else if (loopItem.type === 'items_loop' || loopItem.type === 'qr_code' || loopItem.type === 'cut') {
+                                $loopRow = null; // 不允许嵌套循环或二维码
+                            }
+                            
+                            if ($loopRow) $loopCanvas.append($loopRow);
+                        });
+                    }
+                    break;
+                default: $row = null;
+            }
+            if ($row) canvas.append($row);
+        });
+
+        initializeSortable();
+        
+        // ** FIX FOR EDIT PREVIEW BUG **
+        // All updates must happen AFTER the canvas is built
+        updateAll();
+    }
+
+    // 5. (SAVE) Build the JSON string from the visual editor
+    function buildJsonFromVisualEditor() {
+        let templateData = [];
+        canvas.children('.visual-editor-row').each(function() {
+            const $row = $(this);
+            const type = $row.data('type');
+            let item = { type: type };
+            switch (type) {
+                case 'text':
+                    item.value = $row.find('.prop-value').val();
+                    item.align = $row.find('.prop-align').val();
+                    item.size = $row.find('.prop-size').val();
+                    break;
+                case 'kv':
+                    item.key = $row.find('.prop-key').val();
+                    item.value = $row.find('.prop-value').val();
+                    item.bold_value = $row.find('.prop-bold').is(':checked');
+                    break;
+                case 'divider':
+                    item.char = $row.find('.prop-char').val();
+                    break;
+                case 'feed':
+                    item.lines = parseInt($row.find('.prop-lines').val(), 10) || 1;
+                    break;
+                case 'qr_code':
+                    item.value = $row.find('.prop-value').val();
+                    item.align = $row.find('.prop-align').val();
+                    break;
+                case 'cut': break;
+                case 'items_loop':
+                    item.items = [];
+                    $row.find('.visual-editor-loop-canvas .visual-editor-row').each(function() {
+                        const $loopRow = $(this);
+                        const loopType = $loopRow.data('type');
+                        if (loopType === 'text' || loopType === 'kv') {
+                            let loopItem = { type: loopType };
+                            if (loopType === 'text') {
+                                loopItem.value = $loopRow.find('.prop-value').val();
+                                loopItem.align = $loopRow.find('.prop-align').val();
+                                loopItem.size = $loopRow.find('.prop-size').val();
+                            } else if (loopType === 'kv') {
+                                loopItem.key = $loopRow.find('.prop-key').val();
+                                loopItem.value = $loopRow.find('.prop-value').val();
+                                loopItem.bold_value = $loopRow.find('.prop-bold').is(':checked');
+                            }
+                            item.items.push(loopItem);
+                        }
+                    });
+                    break;
+            }
+            templateData.push(item);
+        });
+        return JSON.stringify(templateData);
+    }
+
+    // 6. (NEW) Update the preview pane
+    function updatePreviewPane() {
+        let jsonString = "[]";
+        try {
+            jsonString = buildJsonFromVisualEditor();
+        } catch (e) {
+            previewPaper.html('<pre class="text-danger">Error building JSON:\n' + e.message + '</pre>');
+            return;
+        }
+
+        let items = JSON.parse(jsonString);
+        let html = '';
+
+        const renderItem = (item) => {
+            let itemHtml = '';
+            // Replace variables
+            let value = item.value || '';
+            let key = item.key || '';
+            Object.keys(mockData).forEach(mockKey => {
+                value = value.replace(mockKey, mockData[mockKey]);
+                key = key.replace(mockKey, mockData[mockKey]);
+            });
+
+            switch (item.type) {
+                case 'text':
+                    html += `<pre class="preview-align-${item.align} preview-size-${item.size}">${escapeHtml(value)}</pre>`;
+                    break;
+                case 'kv':
+                    html += `<pre class="preview-kv-row"><span class="preview-kv-key">${escapeHtml(key)}</span><span class="preview-kv-value ${item.bold_value ? 'bold' : ''}">${escapeHtml(value)}</span></pre>`;
+                    break;
+                case 'divider':
+                    html += `<pre class="preview-align-center">${escapeHtml(String(item.char || '-').repeat(32))}</pre>`;
+                    break;
+                case 'feed':
+                    for(let i=0; i < item.lines; i++) { html += '<br>'; }
+                    break;
+                case 'qr_code':
+                    html += `<pre class="preview-align-${item.align}"><span class="preview-qr-code">[二维码: ${escapeHtml(value)}]</span></pre>`;
+                    break;
+                case 'cut':
+                    html += `<pre class="preview-cut">-- (切纸) --</pre>`;
+                    break;
+                case 'items_loop':
+                    html += `<div class="preview-loop-box">`;
+                    // Render 2 mock items
+                    for(let i=0; i < 2; i++) {
+                        html += `<div class="preview-loop-item">`;
+                        if (i > 0) html += `<pre>${escapeHtml("-".repeat(28))}</pre>`; // separator for 2nd item
+                        item.items.forEach(loopItem => {
+                             // Mock data for item 2
+                            if (i > 0) {
+                                loopItem = JSON.parse(JSON.stringify(loopItem)
+                                    .replace(mockData["{item_name}"], "芝芝芒芒")
+                                    .replace(mockData["{item_customizations}"], "标准冰/三分糖")
+                                    .replace(mockData["{item_total_price}"], "6.00")
+                                );
+                            }
+                            html += renderItem(loopItem);
+                        });
+                        html += `</div>`;
+                    }
+                    html += `</div>`;
+                    break;
+            }
+            return itemHtml; // Return for nested calls
+        };
+        
+        items.forEach(item => renderItem(item));
+        previewPaper.html(html);
+    }
+    
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, function(m) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+        });
+    }
+
+    // 7. (NEW) Check state of the 'Add Loop' button
+    function checkLoopButtonState() {
+        const loopExists = $('#visual-editor-canvas .visual-editor-loop-canvas').length > 0;
+        btnAddLoop.prop('disabled', loopExists);
+    }
+
+    // 8. (NEW) Update preview paper size
+    function updatePreviewPaperSize() {
+        const selectedSize = physicalSizeSelect.val(); // e.g., "50x30" or "80mm"
+        let sizeClass = 'preview-paper-80mm'; // Default
+        
+        if (selectedSize) {
+            // ** START CRITICAL FIX V6.2 **
+            // 这是一个拼写错误，'-' 应该被替换为 '+' 来拼接字符串
+            // 错误的行: sizeClass = 'preview-paper-' - selectedSize; (这会产生 NaN)
+            // 正确的行:
+            sizeClass = 'preview-paper-' + selectedSize;
+            // ** END CRITICAL FIX V6.2 **
+        }
+        
+        // Remove all other size classes
+        previewPaper.removeClass (function (index, className) {
+            return (className.match (/(^|\s)preview-paper-\S+/g) || []).join(' ');
+        });
+        
+        // Add the new size class
+        previewPaper.addClass(sizeClass);
+    }
+
+    // 9. (NEW) Central update function
+    function updateAll() {
+        try {
+            checkLoopButtonState();
+            updatePreviewPaperSize(); // Also update paper size
+            updatePreviewPane();
+        } catch (e) {
+            console.error("Error during updateAll():", e);
+            previewPaper.html('<pre class="text-danger">预览时发生错误:\n' + e.message + '</pre>');
+        }
+    }
+
+    /**
+     * ===================================================================
+     * Event Handlers
+     * ===================================================================
+     */
 
     // Handle 'Create' button click
     $('#create-btn').on('click', function() {
@@ -16,9 +393,11 @@ $(document).ready(function() {
         form[0].reset();
         dataIdInput.val('');
         $('#is_active').prop('checked', true);
-        $('#physical_size').val('80mm'); // 默认 80mm
-        // Pre-fill with a basic structure for convenience
-        $('#template_content').val('[\n    {\n        "type": "text",\n        "value": "Your Text Here",\n        "align": "center"\n    }\n]');
+        $('#physical_size').val('80mm');
+        
+        dataDrawerEl.addEventListener('shown.bs.offcanvas', () => {
+            renderVisualEditor('[]'); // This will call updateAll()
+        }, { once: true });
     });
 
     // Handle 'Edit' button click
@@ -27,6 +406,8 @@ $(document).ready(function() {
         drawerLabel.text('编辑模板');
         form[0].reset();
         dataIdInput.val(dataId);
+        canvas.empty().html('<p class="text-muted">加载中...</p>');
+        previewPane.empty();
 
         $.ajax({
             url: 'api/print_template_handler.php',
@@ -38,22 +419,22 @@ $(document).ready(function() {
                     const tpl = response.data;
                     $('#template_name').val(tpl.template_name);
                     $('#template_type').val(tpl.template_type);
-                    $('#physical_size').val(tpl.physical_size); // Set physical size
+                    $('#physical_size').val(tpl.physical_size);
                     $('#is_active').prop('checked', tpl.is_active == 1);
-                    // Format JSON for better readability
-                    try {
-                        const formattedJson = JSON.stringify(JSON.parse(tpl.template_content), null, 4);
-                        $('#template_content').val(formattedJson);
-                    } catch (e) {
-                        $('#template_content').val(tpl.template_content); // Fallback to raw text
-                    }
+                    
+                    const contentToLoad = tpl.template_content;
+                    
+                    dataDrawerEl.addEventListener('shown.bs.offcanvas', () => {
+                        renderVisualEditor(contentToLoad); // This will call updateAll()
+                    }, { once: true });
+
                 } else {
                     alert('获取模板数据失败: ' + response.message);
                     dataDrawer.hide();
                 }
             },
             error: function() {
-                alert('获取模板数据时发生网络错误。');
+                alert('获取数据时发生网络错误。');
                 dataDrawer.hide();
             }
         });
@@ -63,32 +444,26 @@ $(document).ready(function() {
     form.on('submit', function(e) {
         e.preventDefault();
         
-        const contentVal = $('#template_content').val();
+        let contentVal;
         try {
-            JSON.parse(contentVal);
+            contentVal = buildJsonFromVisualEditor();
+            hiddenJsonInput.val(contentVal);
         } catch(e) {
-            alert('模板内容不是有效的JSON格式，请检查！');
+            alert('构建JSON时出错: ' + e.message);
             return;
         }
-
+        
         const formData = {
             id: dataIdInput.val(),
             template_name: $('#template_name').val(),
             template_type: $('#template_type').val(),
-            physical_size: $('#physical_size').val(), // Get physical size
+            physical_size: $('#physical_size').val(),
             template_content: contentVal,
             is_active: $('#is_active').is(':checked') ? 1 : 0
         };
 
-        // 验证
-        if (!formData.template_type) {
-            alert('请选择模板类型！');
-            return;
-        }
-        if (!formData.physical_size) {
-            alert('请选择物理尺寸！');
-            return;
-        }
+        if (!formData.template_type) { alert('请选择模板类型！'); return; }
+        if (!formData.physical_size) { alert('请选择物理尺寸！'); return; }
 
         $.ajax({
             url: 'api/print_template_handler.php',
@@ -135,5 +510,40 @@ $(document).ready(function() {
                 }
             });
         }
+    });
+
+    // Handle Component Toolbar clicks
+    $('#btn-add-text').on('click', () => createRow('.visual-editor-row[data-type="text"]'));
+    $('#btn-add-kv').on('click', () => createRow('.visual-editor-row[data-type="kv"]'));
+    $('#btn-add-divider').on('click', () => createRow('.visual-editor-row[data-type="divider"]'));
+    $('#btn-add-feed').on('click', () => createRow('.visual-editor-row[data-type="feed"]'));
+    $('#btn-add-qr').on('click', () => createRow('.visual-editor-row[data-type="qr_code"]'));
+    $('#btn-add-cut').on('click', () => createRow('.visual-editor-row[data-type="cut"]'));
+    $('#btn-add-loop').on('click', () => createRow('.visual-editor-row[data-type="items_loop"]'));
+
+    // Handle row deletion
+    $('#data-drawer').on('click', '.btn-remove-row', function() {
+        $(this).closest('.visual-editor-row').remove();
+        updateAll(); // Update preview and button state
+    });
+
+    // Handle real-time preview updates on input change
+    $('#data-drawer').on('input change', '.prop-value, .prop-key, .prop-align, .prop-size, .prop-char, .prop-lines, .prop-bold', function() {
+        updatePreviewPane();
+    });
+
+    // Handle preview size change
+    physicalSizeSelect.on('change', function() {
+        updatePreviewPaperSize();
+    });
+
+    // Handle Offcanvas closing
+    dataDrawerEl.addEventListener('hidden.bs.offcanvas', () => {
+        if (mainSortable) mainSortable.destroy();
+        loopSortables.forEach(s => s.destroy());
+        loopSortables = [];
+        mainSortable = null;
+        canvas.empty();
+        previewPane.empty();
     });
 });

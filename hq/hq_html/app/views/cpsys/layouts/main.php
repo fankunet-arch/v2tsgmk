@@ -2,11 +2,15 @@
 /**
  * Toptea HQ - cpsys
  * Main Layout File
- * Engineer: Gemini | Date: 2025-11-02 | Revision: 14.0 (RMS V2.2 - Add Global Rules Menu)
+ * Engineer: Gemini | Date: 2025-11-03 | Revision: 16.0 (Revert CodeMirror for Visual Editor)
  *
  * [GEMINI ADDON_FIX]:
  * 1. Added 'pos_addon_management' to $posPages array.
  * 2. Added new menu link for '加料管理' under POS 管理.
+ *
+ * [GEMINI Visual_Editor_Refactor]:
+ * 1. Removed CodeMirror CSS/JS CDN links.
+ * 2. Kept SortableJS for drag-and-drop functionality.
  */
 $page_title = $page_title ?? 'TopTea HQ';
 $page = $_GET['page'] ?? 'dashboard';
@@ -28,6 +32,7 @@ $stockPages = ['warehouse_stock_management', 'stock_allocation', 'store_stock_vi
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="css/style.css?v=<?php echo time(); ?>">
+
 </head>
 <body>
     <div class="d-flex">

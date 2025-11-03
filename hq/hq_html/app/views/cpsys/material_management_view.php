@@ -12,7 +12,21 @@ $expiry_rule_map = [
     'END_OF_DAY' => '当日有效'
 ];
 ?>
-<div class="d-flex justify-content-end mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex gap-2">
+        <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input type="text" id="material-search-input" class="form-control" placeholder="按物料名称搜索...">
+        </div>
+        <div class="input-group" style="width: 200px;">
+            <select class="form-select" id="material-type-filter">
+                <option value="ALL" selected>-- 所有类型 --</option>
+                <?php foreach ($material_type_map as $key => $value): ?>
+                    <option value="<?php echo $key; ?>"><?php echo htmlspecialchars($value); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+    </div>
     <button class="btn btn-primary" id="create-material-btn" data-bs-toggle="offcanvas" data-bs-target="#material-drawer">
         <i class="bi bi-plus-circle me-2"></i>创建新物料
     </button>
@@ -34,16 +48,16 @@ $expiry_rule_map = [
                         <th class="text-end">操作</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="materials-table-body">
                     <?php if (empty($materials)): ?>
                         <tr>
                             <td colspan="5" class="text-center">暂无物料数据。</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($materials as $material): ?>
-                            <tr>
+                            <tr data-type="<?php echo htmlspecialchars($material['material_type']); ?>" data-name="<?php echo htmlspecialchars(strtolower($material['name_zh'])); ?>">
                                 <td><strong><?php echo htmlspecialchars($material['material_code']); ?></strong></td>
-                                <td><?php echo htmlspecialchars($material['name_zh']); ?></td>
+                                <td class="material-name"><?php echo htmlspecialchars($material['name_zh']); ?></td>
                                 <td>
                                     <span class="badge text-bg-info"><?php echo $material_type_map[$material['material_type']] ?? '未知'; ?></span>
                                 </td>
@@ -73,6 +87,7 @@ $expiry_rule_map = [
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>
+                    <tr id="no-matching-row" style="display: none;"><td colspan="5" class="text-center">没有匹配的物料。</td></tr>
                 </tbody>
             </table>
         </div>

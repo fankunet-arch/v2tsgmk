@@ -4,10 +4,58 @@
  *
  * Engineer: Gemini
  * Date: 2025-10-26
- * Revision: 7.4 (Expiry Rule Engine)
+ * Revision: 7.5 (Added Search and Filter)
  */
 $(document).ready(function() {
     
+    // --- START: New Search/Filter Logic ---
+    const searchInput = $('#material-search-input');
+    const typeFilter = $('#material-type-filter');
+    const tableBody = $('#materials-table-body');
+    const noDataRow = $('#no-matching-row');
+
+    function filterMaterials() {
+        const searchTerm = searchInput.val().toLowerCase();
+        const filterType = typeFilter.val();
+        let hasVisibleRows = false;
+
+        tableBody.find('tr[data-name]').each(function() { // Only select rows with data
+            const $row = $(this);
+            const name = $row.data('name') || '';
+            const type = $row.data('type') || '';
+
+            // 1. Check search term
+            const nameMatch = name.includes(searchTerm);
+            
+            // 2. Check type filter
+            const typeMatch = (filterType === 'ALL' || filterType === type);
+
+            // Show/hide row
+            if (nameMatch && typeMatch) {
+                $row.show();
+                hasVisibleRows = true;
+            } else {
+                $row.hide();
+            }
+        });
+
+        // Show/hide the "no matching" message
+        if (hasVisibleRows) {
+            noDataRow.hide();
+        } else {
+            // Only show "no matching" if there were rows to filter in the first place
+            if (tableBody.find('tr[data-name]').length > 0) {
+                noDataRow.show();
+            }
+        }
+    }
+
+    // Bind event listeners
+    searchInput.on('keyup', filterMaterials);
+    typeFilter.on('change', filterMaterials);
+    // --- END: New Search/Filter Logic ---
+
+
     const materialDrawer = new bootstrap.Offcanvas(document.getElementById('material-drawer'));
     const form = $('#material-form');
     const drawerLabel = $('#drawer-label');
