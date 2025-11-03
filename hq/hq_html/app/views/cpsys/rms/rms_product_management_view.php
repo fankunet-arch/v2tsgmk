@@ -1,7 +1,7 @@
 <?php
 /**
  * Toptea HQ - RMS (Recipe Management System) View
- * Engineer: Gemini | Date: 2025-11-02 | Revision: 4.0 (RMS V2.2 - Gating UI)
+ * Engineer: Gemini | Date: 2025-11-03 | Revision: 5.1 (Fix: Moved Modal HTML out of d-none template)
  */
 ?>
 <div class="row">
@@ -191,13 +191,16 @@
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h6 class="mb-0 text-info">当满足以下条件时:</h6>
                 
-                <div class="input-group input-group-sm ms-auto me-3" style="max-width: 250px;">
+                <div class="input-group input-group-sm ms-auto me-3" style="max-width: 300px;">
                     <span class="input-group-text" title="P-A-M-T 组合编码">
                         <i class="bi bi-upc-scan"></i>
                     </span>
                     <input type="text" class="form-control form-control-sm pamt-code-display" readonly style="background-color: #1a1d20; font-family: monospace; text-align: center;" value="[P-A-M-T]">
                     <button class="btn btn-outline-secondary btn-copy-pamt" type="button" title="复制编码">
                         <i class="bi bi-clipboard"></i>
+                    </button>
+                    <button class="btn btn-outline-info btn-show-pmat-list" type="button" title="显示此规则匹配的所有PMAT码" data-bs-toggle="modal" data-bs-target="#pmat-list-modal">
+                        <i class="bi bi-list-task"></i>
                     </button>
                 </div>
                 <button type="button" class="btn-close btn-remove-adjustment-rule" aria-label="删除此规则"></button>
@@ -247,6 +250,24 @@
             <button type="button" class="btn btn-outline-secondary btn-sm btn-add-adjustment-recipe-row">
                 <i class="bi bi-plus-circle-dotted"></i> 添加原料覆盖
             </button>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="pmat-list-modal" tabindex="-1" aria-labelledby="pmat-list-modal-label" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="pmat-list-modal-label">匹配的 PMAT 码列表</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">此列表基于顶部的“选项门控”和此规则的条件生成。</p>
+                <textarea class="form-control" id="pmat-list-textarea" rows="15" readonly style="font-family: monospace; font-size: 0.9rem; background-color: #1a1d20;"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
         </div>
     </div>
 </div>

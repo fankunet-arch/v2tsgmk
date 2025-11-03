@@ -68,6 +68,8 @@
     <div class="offcanvas-body">
         <form id="data-form">
             <input type="hidden" id="data-id" name="id">
+            
+            <h6 class="text-white-50">基础信息</h6>
             <div class="mb-3">
                 <label for="store_code" class="form-label">门店码 <span class="text-danger">*</span></label>
                 <input type="text" class="form-control" id="store_code" name="store_code" required>
@@ -80,6 +82,13 @@
                 <label for="tax_id" class="form-label">门店税号 (NIF) <span class="text-danger">*</span></label>
                 <input type="text" class="form-control" id="tax_id" name="tax_id" required>
             </div>
+            <div class="mb-3">
+                <label for="store_city" class="form-label">所在城市</label>
+                <input type="text" class="form-control" id="store_city" name="store_city">
+            </div>
+
+            <hr>
+            <h6 class="text-white-50">财务与票据</h6>
             <div class="mb-3">
                 <label for="billing_system" class="form-label">票据合规系统 <span class="text-danger">*</span></label>
                 <select class="form-select" id="billing_system" name="billing_system" required>
@@ -110,18 +119,60 @@
                     </div>
                 </div>
             </div>
+
             <hr>
+            <h6 class="text-white-50">门店打印机配置</h6>
             <div class="mb-3">
-                <label for="store_city" class="form-label">所在城市</label>
-                <input type="text" class="form-control" id="store_city" name="store_city">
+                <label for="printer_type" class="form-label">打印机类型</label>
+                <select class="form-select" id="printer_type" name="printer_type">
+                    <option value="NONE">不使用打印机</option>
+                    <option value="WIFI">WIFI (IP/Socket)</option>
+                    <option value="BLUETOOTH">蓝牙 (Bluetooth)</option>
+                    <option value="USB">USB (安卓收银机)</option>
+                </select>
             </div>
+            
+            <div id="printer_wifi_group" style="display: none;">
+                <div class="row g-2">
+                    <div class="col-8">
+                        <div class="mb-3">
+                            <label for="printer_ip" class="form-label">IP 地址 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="printer_ip" name="printer_ip" placeholder="例如: 192.168.1.100">
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="mb-3">
+                            <label for="printer_port" class="form-label">端口 <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="printer_port" name="printer_port" placeholder="例如: 9100">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="printer_bt_group" style="display: none;">
+                <div class="mb-3">
+                    <label for="printer_mac" class="form-label">蓝牙 MAC 地址 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="printer_mac" name="printer_mac" placeholder="例如: AA:BB:CC:DD:EE:FF">
+                </div>
+            </div>
+            
+            <div id="printer_usb_group" style="display: none;">
+                <div class="alert alert-info">
+                    安卓收银机将自动查找连接的 USB 打印机。
+                </div>
+            </div>
+            <hr>
             <div class="form-check form-switch mb-4">
                 <input class="form-check-input" type="checkbox" role="switch" id="is_active" name="is_active" value="1" checked>
                 <label class="form-check-label" for="is_active">门店是否激活</label>
             </div>
-            <div class="d-flex justify-content-end">
-                <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="offcanvas">取消</button>
-                <button type="submit" class="btn btn-primary">保存</button>
+            
+            <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="offcanvas">取消</button>
+                <button type="submit" class="btn btn-primary">保存到云端</button>
+                <button type="button" class="btn btn-info" id="btn-sync-device" title="将当前设置保存并同步到安卓设备">
+                    <i class="bi bi-hdd-stack"></i> 同步到设备
+                </button>
             </div>
         </form>
     </div>

@@ -10,6 +10,9 @@
  * 3. Fixed ambiguity in 'getAllVariantsByMenuItemId': pt ON p.id = pt.product_id -> pt ON p.id = pt.product_id
  * 4. [CRITICAL 500 FIX] Added COALESCE to 'getAllVariantsByMenuItemId' to handle NULL product_codes,
  * which caused concatenation with NULL in the view, resulting in a 500 error.
+ *
+ * [GEMINI PRINTER_CONFIG_UPDATE]:
+ * 1. Updated getStoreById to select new printer config fields.
  */
 
 // --- RMS: New Functions for Dynamic Recipe Engine ---
@@ -335,7 +338,14 @@ function getAllStores(PDO $pdo): array {
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 function getStoreById(PDO $pdo, int $id) {
-    $stmt = $pdo->prepare("SELECT * FROM kds_stores WHERE id = ? AND deleted_at IS NULL");
+    // [GEMINI PRINTER_CONFIG_UPDATE]
+    // Added new printer fields to the SELECT statement
+    $stmt = $pdo->prepare("
+        SELECT *,
+               printer_type, printer_ip, printer_port, printer_mac 
+        FROM kds_stores 
+        WHERE id = ? AND deleted_at IS NULL
+    ");
     $stmt->execute([$id]);
     return $stmt->fetch(PDO::FETCH_ASSOC);
 }

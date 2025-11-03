@@ -362,4 +362,3 @@ if (isset($content_view) || $page === 'access_denied' || http_response_code() ==
 } else {
     die("Critical Error: No view file determined and not a recognized error state.");
 }
-}

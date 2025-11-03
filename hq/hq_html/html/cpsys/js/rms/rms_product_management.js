@@ -1,7 +1,7 @@
 /**
  * Toptea HQ - RMS (Recipe Management System) JavaScript
- * Engineer: Gemini | Date: 2025-11-02
- * Revision: 6.0 (RMS V2.2 - Gating UI Logic)
+ * Engineer: Gemini | Date: 2025-11-03
+ * Revision: 6.1 (Added PMAT List Generator for L3 Rules)
  */
 $(document).ready(function() {
 
@@ -90,6 +90,12 @@ $(document).ready(function() {
         }
     });
     
+    // START: 新增事件处理器 (Rev 6.1)
+    editorContainer.on('click', '.btn-show-pmat-list', function() {
+        generatePmatListForRule($(this).closest('.adjustment-rule-card'));
+    });
+    // END: 新增事件处理器 (Rev 6.1)
+
     function fallbackCopy(inputElement) {
         try {
             inputElement.select();
@@ -102,9 +108,10 @@ $(document).ready(function() {
     
     function feedback($button) {
         const $icon = $button.find('i');
-        $icon.removeClass('bi-clipboard').addClass('bi-check-lg text-success');
+        const originalIcon = $icon.attr('class');
+        $icon.removeClass('bi-clipboard bi-list-task').addClass('bi-check-lg text-success');
         setTimeout(() => {
-            $icon.removeClass('bi-check-lg text-success').addClass('bi-clipboard');
+            $icon.removeClass('bi-check-lg text-success').addClass(originalIcon);
         }, 1500);
     }
 
@@ -303,4 +310,93 @@ $(document).ready(function() {
             error: () => alert('删除过程中发生网络错误。')
         });
     }
+    
+    // START: 新增功能函数 (Rev 6.1)
+    /**
+     * 生成并显示此 L3 规则匹配的所有 PMAT 码
+     * @param {jQuery} $ruleCard - .adjustment-rule-card 的 jQuery 对象
+     */
+    function generatePmatListForRule($ruleCard) {
+        const pCode = $('#product_code').val() || 'P';
+        
+        // 辅助函数：从 Gating 复选框的 <label> 中提取 [CODE]
+        function getCodeFromGatingLabel(labelElement) {
+            const match = $(labelElement).text().match(/\[(.*?)\]/);
+            return match ? match[1] : null;
+        }
+        
+        // 辅助函数：获取特定类型的代码列表
+        // $editorTemplate是在此函数外部定义的，指向editor-template的DOM
+        function getCodeList(type, $ruleSelect) {
+            const ruleValue = $ruleSelect.val();
+            
+            // 1. 如果规则指定了特定选项 (例如 "少冰")
+            if (ruleValue) {
+                const specificCode = $ruleSelect.find('option:selected').data('code');
+                return [specificCode];
+            }
+            
+            // 2. 如果规则是 "任意"
+            let codeList = [];
+            if (type === 'cup') {
+                // 杯型没有 Gating，所以我们获取下拉列表中的所有可用杯型
+                // 从模板中查找杯型选项来获取所有杯型代码
+                codeList = templatesContainer.find('.cup-condition').find('option[value!=""]').map((_, opt) => $(opt).data('code')).get();
+            } else if (type === 'ice') {
+                // 冰量：获取 Gating 部分所有 *已勾选* 的冰量代码
+                codeList = $('#gating-ice-list input:checked').map((_, cb) => {
+                    return getCodeFromGatingLabel($(cb).closest('.form-check').find('label'));
+                }).get();
+            } else if (type === 'sweetness') {
+                // 甜度：获取 Gating 部分所有 *已勾选* 的甜度代码
+                codeList = $('#gating-sweetness-list input:checked').map((_, cb) => {
+                    return getCodeFromGatingLabel($(cb).closest('.form-check').find('label'));
+                }).get();
+            }
+            
+            return codeList.filter(Boolean); // 过滤掉无效代码
+        }
+
+        const aList = getCodeList('cup', $ruleCard.find('.cup-condition'));
+        const mList = getCodeList('ice', $ruleCard.find('.ice-condition'));
+        const tList = getCodeList('sweetness', $ruleCard.find('.sweetness-condition'));
+
+        // 如果 "任意" 列表为空 (例如 Gating 全没勾选)，我们用 null 来代表 "任意"
+        // 修正：如果列表为空，笛卡尔积会自然为空，不需要推入null
+        // if (aList.length === 0) aList.push(null); // 移除
+        // if (mList.length === 0) mList.push(null); // 移除
+        // if (tList.length === 0) tList.push(null); // 移除
+
+        // 计算笛卡尔积
+        let results = [];
+
+        // 处理 "任意" 列表为空的情况
+        const finalAList = aList.length > 0 ? aList : [null];
+        const finalMList = mList.length > 0 ? mList : [null];
+        const finalTList = tList.length > 0 ? tList : [null];
+        
+        finalAList.forEach(a => {
+            finalMList.forEach(m => {
+                finalTList.forEach(t => {
+                    // 组合 PMAT 码，过滤掉 null 或空的部分
+                    results.push([pCode, a, m, t].filter(Boolean).join('-'));
+                });
+            });
+        });
+        
+        // 去重并显示
+        const uniqueResults = [...new Set(results)];
+        const modalTextarea = $('#pmat-list-textarea');
+        
+        if (uniqueResults.length > 0) {
+             modalTextarea.val(uniqueResults.join('\n'));
+        } else {
+             modalTextarea.val("（无匹配）\n\n请检查：\n1. Gating设置是否至少勾选了一项？\n2. L3规则是否指定了Gating中未勾选的项？");
+        }
+        
+        // 设置模态框标题
+        const ruleName = $ruleCard.find('.pamt-code-display').val();
+        $('#pmat-list-modal-label').text(`匹配 [${ruleName}] 的PMAT码列表 (${uniqueResults.length}条)`);
+    }
+    // END: 新增功能函数 (Rev 6.1)
 });
