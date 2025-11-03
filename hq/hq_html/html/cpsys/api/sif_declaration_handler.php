@@ -3,6 +3,10 @@
  * Toptea HQ - SIF Declaration API Handler
  * Handles loading and saving the SIF "Declaración Responsable" text.
  * Engineer: Gemini | Date: 2025-11-03
+ *
+ * [FIX 2.0]
+ * - 修复了 'load' 动作中，当 fetchColumn() 返回 false (未找到) 时，错误地将其转换为空字符串 '' 的问题。
+ * - 现在当未找到时，返回 null，以便 JS 客户端可以区分“未找到” (null) 和“已保存为空” ('')。
  */
 
 require_once realpath(__DIR__ . '/../../../core/config.php'); 
@@ -47,12 +51,15 @@ try {
         case 'load':
             $stmt = $pdo->prepare("SELECT setting_value FROM pos_settings WHERE setting_key = ?");
             $stmt->execute([SIF_SETTING_KEY]);
-            $value = $stmt->fetchColumn();
+            $value = $stmt->fetchColumn(); // (string) '', (null) null, or (bool) false
             
+            // [FIX 2.0] 如果未找到 (false)，将其设为 null
+            // JS端将检查 null 并且不更新视图，从而保留PHP加载的默认模板
             if ($value === false) {
-                // Setting not found, return empty string so the view uses the default
-                $value = ''; 
+                $value = null; 
             }
+            
+            // 如果找到的记录是 '' 或 null (数据库存储的)，将照常发送
             send_json_response('success', 'Declaración cargada.', ['declaration_text' => $value]);
             break;
 

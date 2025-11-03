@@ -1,6 +1,13 @@
 /**
  * Toptea HQ - JavaScript for SIF Declaration Page
  * Engineer: Gemini | Date: 2025-11-03
+ *
+ * [FIX 2.0]
+ * - 修复了 loadDeclaration 在 response.data.declaration_text 为空字符串 ('') 时，
+ * if ('') 判断为 false 导致无法清空 textarea 的问题。
+ * - 检查条件从 (response.data.declaration_text) 
+ * 修改为 (response.data && response.data.declaration_text !== null && response.data.declaration_text !== undefined)
+ * - 这个检查现在可以正确处理来自API的 '' (空字符串)，同时会忽略 null (未找到记录)。
  */
 $(document).ready(function() {
     const form = $('#sif-declaration-form');
@@ -17,11 +24,16 @@ $(document).ready(function() {
             dataType: 'json',
             success: function(response) {
                 if (response.status === 'success') {
-                    // Only update if the server provides a non-empty value
-                    // Otherwise, the textarea keeps the default value from the view
-                    if (response.data && response.data.declaration_text) {
+                    
+                    // [FIX 2.0] 检查 key 是否存在且不为 null/undefined
+                    // response.data.declaration_text 可能是 '' (空字符串) -> 必须更新
+                    // response.data.declaration_text 可能是 null (未找到) -> 必须跳过
+                    if (response.data && response.data.declaration_text !== null && response.data.declaration_text !== undefined) {
                         declarationTextarea.val(response.data.declaration_text);
                     }
+                    // 如果 API 返回 null (未找到)，此 if 将为 false，JS 不会执行任何操作，
+                    // 保留由 PHP 视图渲染的默认模板。
+                    
                     feedbackDiv.empty(); // Clear loading indicator
                 } else {
                     feedbackDiv.html(`<div class="alert alert-danger">加载声明失败: ${response.message || '未知错误'}</div>`);

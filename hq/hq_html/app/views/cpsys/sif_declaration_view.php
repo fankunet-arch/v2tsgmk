@@ -2,6 +2,12 @@
 /**
  * Toptea HQ - SIF Compliance Declaration View
  * Engineer: Gemini | Date: 2025-11-03
+ *
+ * [FIX 2.0]
+ * - 修复了 $sif_declaration_text 为空字符串 ('') 时，视图错误地加载默认模板的问题。
+ * - 逻辑从 (!empty($sif_declaration_text)) 修改为 ($sif_declaration_text !== false)，
+ * 以区分“未找到记录 (false)”和“已保存为空 (string '')”。
+ * - (index.php 控制器传来的是 fetchColumn() 的结果，可能是 false, null 或 string)
  */
 
 // Pre-fill the text area with the spanish template if it's empty
@@ -26,8 +32,9 @@ k) Manifestación de conformidad: El productor certifica, bajo su responsabilida
 l) Lugar y fecha: Bilbao, España / 03 / 11 / 2025
 TEXT;
 
-// If $sif_declaration_text is passed from the controller and is not empty, use it. Otherwise, use the default.
-$current_declaration_text = (!empty($sif_declaration_text)) ? $sif_declaration_text : $default_declaration_text;
+// [FIX 2.0] 使用 ($sif_declaration_text !== false) 来正确处理
+// fetchColumn() 返回的 false (未找到) vs '' (空字符串)
+$current_declaration_text = ($sif_declaration_text !== false) ? $sif_declaration_text : $default_declaration_text;
 ?>
 
 <div class="row justify-content-center">
