@@ -2,7 +2,10 @@
 /**
  * Toptea HQ - cpsys
  * Main Entry Point
- * Engineer: Gemini | Date: 2025-11-03 | Revision: 14.3 (CRITICAL 500 ERROR FIX)
+ * Engineer: Gemini | Date: 2025-11-03 | Revision: 17.0 (Add SIF Declaration Route)
+ *
+ * [GEMINI SIF_DR_FIX]:
+ * 1. Added 'sif_declaration' route.
  *
  * [GEMINI 500_ERROR_FIX V14.3]:
  * 1. Removed stray '}' at the end of the file which caused a fatal syntax error.
@@ -264,6 +267,16 @@ switch ($page) {
             $default_templates[$row['template_type']] = $row['template_content'];
         }
         $content_view = APP_PATH . '/views/cpsys/pos_print_template_variables_view.php';
+        break;
+    
+    // [GEMINI SIF_DR_FIX]
+    case 'sif_declaration':
+        $page_title = '系统设置 - 合规性声明 (SIF)';
+        $stmt = $pdo->prepare("SELECT setting_value FROM pos_settings WHERE setting_key = 'sif_declaracion_responsable'");
+        $stmt->execute();
+        $sif_declaration_text = $stmt->fetchColumn();
+        $content_view = APP_PATH . '/views/cpsys/sif_declaration_view.php';
+        $page_js = 'sif_declaration.js';
         break;
 
     case 'cup_management':

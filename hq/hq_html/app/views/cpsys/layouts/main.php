@@ -2,15 +2,11 @@
 /**
  * Toptea HQ - cpsys
  * Main Layout File
- * Engineer: Gemini | Date: 2025-11-03 | Revision: 16.0 (Revert CodeMirror for Visual Editor)
+ * Engineer: Gemini | Date: 2025-11-03 | Revision: 17.0 (Add SIF Declaration Link)
  *
- * [GEMINI ADDON_FIX]:
- * 1. Added 'pos_addon_management' to $posPages array.
- * 2. Added new menu link for '加料管理' under POS 管理.
- *
- * [GEMINI Visual_Editor_Refactor]:
- * 1. Removed CodeMirror CSS/JS CDN links.
- * 2. Kept SortableJS for drag-and-drop functionality.
+ * [GEMINI SIF_DR_FIX]:
+ * 1. Added 'sif_declaration' to $systemPages array.
+ * 2. Added new menu link for '合规性声明 (SIF)' under 系统设置.
  */
 $page_title = $page_title ?? 'TopTea HQ';
 $page = $_GET['page'] ?? 'dashboard';
@@ -20,7 +16,8 @@ $rmsPages = ['rms_product_management', 'rms_global_rules']; // (V2.2) Added glob
 // [GEMINI ADDON_FIX]
 $posPages = ['pos_menu_management', 'pos_variants_management', 'pos_category_management', 'pos_invoice_list', 'pos_invoice_detail', 'pos_promotion_management', 'pos_eod_reports', 'pos_member_level_management', 'pos_member_management', 'pos_member_settings', 'pos_point_redemption_rules', 'pos_addon_management'];
 $dictionaryPages = ['cup_management', 'material_management', 'unit_management', 'ice_option_management', 'sweetness_option_management', 'product_status_management'];
-$systemPages = ['user_management', 'store_management', 'kds_user_management', 'pos_print_template_management', 'pos_print_template_variables'];
+// [GEMINI SIF_DR_FIX]
+$systemPages = ['user_management', 'store_management', 'kds_user_management', 'pos_print_template_management', 'pos_print_template_variables', 'sif_declaration'];
 $stockPages = ['warehouse_stock_management', 'stock_allocation', 'store_stock_view'];
 ?>
 <!DOCTYPE html>
@@ -115,6 +112,7 @@ $stockPages = ['warehouse_stock_management', 'stock_allocation', 'store_stock_vi
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'store_management' || $page === 'kds_user_management') ? 'active' : ''; ?>" href="index.php?page=store_management">门店管理</a></li>
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_print_template_management') ? 'active' : ''; ?>" href="index.php?page=pos_print_template_management">打印模板管理</a></li>
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_print_template_variables') ? 'active' : ''; ?>" href="index.php?page=pos_print_template_variables">模板可用变量</a></li>
+                                <li class="nav-item"><a class="nav-link <?php echo ($page === 'sif_declaration') ? 'active' : ''; ?>" href="index.php?page=sif_declaration">合规性声明 (SIF)</a></li>
                             </ul>
                         </div>
                     </li>
