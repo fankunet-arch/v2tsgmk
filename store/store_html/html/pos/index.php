@@ -2,7 +2,7 @@
 /**
  * TopTea POS - Main Entry Point
  * Engineer: Gemini | Date: 2025-11-03
- * Revision: 3.6 (Add SIF Declaration Modal)
+ * Revision: 4.1 (Definitive height fix for bottom drawers)
  *
  * [GEMINI SIF_DR_FIX]:
  * 1. Added new modal #sifDeclarationModal at the end of the body.
@@ -15,6 +15,12 @@
  * - (无ID) -> #ice_selector_list (清空)
  * - (无ID) -> #sugar_selector_list (清空)
  * - #customize_price -> #custom_item_price
+ *
+ * [FIX 4.1 - UI (Definitive)]
+ * 1. 移除 #opsOffcanvas 和 #settingsOffcanvas 上的 h-75 类。
+ * 2. 为 #opsOffcanvas 和 #settingsOffcanvas 添加内联样式 style="height: auto;"，
+ * 覆盖 Bootstrap 默认的 height: 40vh 限制，使其高度自适应内容。
+ * 3. #customizeOffcanvas (商品定制) 保持 h-75，因为它内容最多。
  */
 
 // This MUST be the first include. It checks if the user is logged in.
@@ -94,9 +100,10 @@ $cache_version = time();
     </div>
   </div>
 
-  <div class="offcanvas offcanvas-bottom offcanvas-sheet h-75" tabindex="-1" id="opsOffcanvas"><div class="offcanvas-header"><h5 class="offcanvas-title" data-i18n="ops_panel">功能面板</h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div><div class="offcanvas-body"><div class="row g-3">
+  <div class="offcanvas offcanvas-bottom offcanvas-sheet" tabindex="-1" id="opsOffcanvas" style="height: auto;"><div class="offcanvas-header"><h5 class="offcanvas-title" data-i18n="ops_panel">功能面板</h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div><div class="offcanvas-body"><div class="row g-3">
+    <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_shift_end"><i class="bi bi-person-check d-block fs-2 mb-2"></i><span data-i18n="shift_handover">交接班</span></button></div>
     <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_txn_query"><i class="bi bi-clock-history d-block fs-2 mb-2"></i><span data-i18n="txn_query">交易查询</span></button></div>
-    <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_eod"><i class="bi bi-calendar-check d-block fs-2 mb-2"></i><span data-i18n="eod">日结</span></button></div>
+    <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_eod"><i class="bi bi-calendar-check d-block fs-2 mb-2"></i><span data-i1m="eod">日结</span></button></div>
     <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_holds"><i class="bi bi-inboxes d-block fs-2 mb-2"></i><span data-i18n="holds">挂起单</span></button></div>
     <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" data-bs-toggle="offcanvas" data-bs-target="#settingsOffcanvas"><i class="bi bi-gear d-block fs-2 mb-2"></i><span data-i18n="settings">设置</span></button></div>
   </div></div></div>
@@ -168,7 +175,7 @@ $cache_version = time();
     </div>
   </div>
 
-  <div class="offcanvas offcanvas-bottom offcanvas-sheet" tabindex="-1" id="settingsOffcanvas"><div class="offcanvas-header"><h5 class="offcanvas-title" data-i18n="settings">设置</h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div><div class="offcanvas-body"><div class="list-group"><div class="list-group-item"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="setting_peak_mode"><label class="form-check-label" for="setting_peak_mode" data-i18n="peak_mode">高峰模式 (对比增强)</label></div><small class="form-text text-muted" data-i18n="peak_mode_desc">左侧菜单变白，并在前方功能按钮保留返回图示，避免误操。</small></div><div class="list-group-item"><div class="form-check"><input class="form-check-input" type="radio" name="hand_mode" id="setting_lefty_mode" value="lefty-mode"><label class="form-check-label" for="setting_lefty_mode" data-i18n="lefty_mode">左手模式 (点菜按钮靠左)</label></div></div><div class="list-group-item"><div class="form-check"><input class="form-check-input" type="radio" name="hand_mode" id="setting_righty_mode" value="righty-mode"><label class="form-check-label" for="setting_righty_mode" data-i18n="righty_mode">右手模式 (点菜按钮靠右)</label></div></div>
+  <div class="offcanvas offcanvas-bottom offcanvas-sheet" tabindex="-1" id="settingsOffcanvas" style="height: auto;"><div class="offcanvas-header"><h5 class="offcanvas-title" data-i18n="settings">设置</h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div><div class="offcanvas-body"><div class="list-group"><div class="list-group-item"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="setting_peak_mode"><label class="form-check-label" for="setting_peak_mode" data-i18n="peak_mode">高峰模式 (对比增强)</label></div><small class="form-text text-muted" data-i18n="peak_mode_desc">左侧菜单变白，并在前方功能按钮保留返回图示，避免误操。</small></div><div class="list-group-item"><div class="form-check"><input class="form-check-input" type="radio" name="hand_mode" id="setting_lefty_mode" value="lefty-mode"><label class="form-check-label" for="setting_lefty_mode" data-i1E="lefty_mode">左手模式 (点菜按钮靠左)</label></div></div><div class="list-group-item"><div class="form-check"><input class="form-check-input" type="radio" name="hand_mode" id="setting_righty_mode" value="righty-mode"><label class="form-check-label" for="setting_righty_mode" data-i18n="righty_mode">右手模式 (点菜按钮靠右)</label></div></div>
   <div class="list-group-item"><button type="button" class="btn btn-link text-decoration-none px-0" id="btn_show_sif_declaration">查看合规性声明 (Ver Declaración Responsable)</button></div>
   </div></div></div>
 
