@@ -1,7 +1,9 @@
 /**
  * Toptea HQ - cpsys
  * JavaScript for Store Management Page
- * Engineer: Gemini | Date: 2025-10-26 | Revision: 3.0 (Printer Config Implementation)
+ * Engineer: Gemini | Date: 2025-10-26
+ * Revision: 3.0 (Printer Config Implementation)
+ * Revision: 3.2 (Add Checkbox to Invoicing Confirmation Modal)
  */
 
 // --- [GEMINI PRINTER_CONFIG_UPDATE] START: Global Callbacks ---
@@ -16,17 +18,29 @@ window.onConfigSaveFailure = function(error) {
 
 
 $(document).ready(function() {
-    const dataDrawer = new bootstrap.Offcanvas(document.getElementById('data-drawer'));
+    
+    // --- 1. 获取所有需要的元素 ---
+    const dataDrawerEl = document.getElementById('data-drawer');
+    const dataDrawer = new bootstrap.Offcanvas(dataDrawerEl);
     const form = $('#data-form');
     const drawerLabel = $('#drawer-label');
     const dataIdInput = $('#data-id');
 
-    // --- [GEMINI PRINTER_CONFIG_UPDATE] START: Printer Field Refs ---
+    // 打印机字段
     const printerTypeSelect = $('#printer_type');
     const wifiGroup = $('#printer_wifi_group');
     const btGroup = $('#printer_bt_group');
     const usbGroup = $('#printer_usb_group');
     const syncButton = $('#btn-sync-device');
+
+    // --- START: 发票确认逻辑元素 ---
+    const confirmEnableModalEl = document.getElementById('confirmEnableInvoicingModal');
+    const confirmEnableModal = new bootstrap.Modal(confirmEnableModalEl);
+    const confirmEnableBtn = $('#btn-confirm-enable-invoicing');
+    const confirmInvoiceCheckbox = $('#confirmInvoiceCheckbox'); // <-- 新增
+    const formSubmitButton = form.find('button[type="submit"]');
+    // --- END: 发票确认逻辑元素 ---
+
 
     /**
      * 根据选择的打印机类型显示/隐藏相关输入框
@@ -52,7 +66,6 @@ $(document).ready(function() {
     printerTypeSelect.on('change', function() {
         togglePrinterFields($(this).val());
     });
-    // --- [GEMINI PRINTER_CONFIG_UPDATE] END ---
 
 
     $('#create-btn').on('click', function() {
@@ -67,6 +80,13 @@ $(document).ready(function() {
         // [GEMINI PRINTER_CONFIG_UPDATE] Reset printer fields
         printerTypeSelect.val('NONE');
         togglePrinterFields('NONE');
+
+        // --- START: 新增逻辑 ---
+        // 为新门店设置原始票据系统为 'NONE'
+        form.data('original-billing-system', 'NONE');
+        // 确保"不可开票"被选中
+        $('#billing_system').val('NONE');
+        // --- END: 新增逻辑 ---
     });
 
     $('.table').on('click', '.edit-btn', function() {
@@ -89,13 +109,17 @@ $(document).ready(function() {
                     $('#store_city').val(store.store_city);
                     $('#is_active').prop('checked', store.is_active == 1);
                     
-                    // [GEMINI PRINTER_CONFIG_UPDATE] Load and display printer fields
                     const printerType = store.printer_type || 'NONE';
                     printerTypeSelect.val(printerType);
                     $('#printer_ip').val(store.printer_ip);
                     $('#printer_port').val(store.printer_port);
                     $('#printer_mac').val(store.printer_mac);
-                    togglePrinterFields(printerType); // Show/hide fields based on loaded type
+                    togglePrinterFields(printerType);
+                    
+                    // --- START: 新增逻辑 ---
+                    // 存储加载时的原始票据系统状态
+                    form.data('original-billing-system', store.billing_system || 'NONE');
+                    // --- END: 新增逻辑 ---
                     
                 } else { alert('获取数据失败: ' + response.message); dataDrawer.hide(); }
             },
@@ -103,9 +127,15 @@ $(document).ready(function() {
         });
     });
 
-    // "保存到云端" 按钮
-    form.on('submit', function(e) {
-        e.preventDefault();
+    /**
+     * --- START: 重构保存逻辑 ---
+     * 将实际的 AJAX 提交操作封装成一个函数
+     */
+    function performSave() {
+        // 禁用所有提交按钮
+        formSubmitButton.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>保存中...');
+        confirmEnableBtn.prop('disabled', true);
+
         const formData = {
             id: dataIdInput.val(),
             store_code: $('#store_code').val(),
@@ -117,8 +147,6 @@ $(document).ready(function() {
             eod_cutoff_hour: $('#eod_cutoff_hour').val(),
             store_city: $('#store_city').val(),
             is_active: $('#is_active').is(':checked') ? 1 : 0,
-            
-            // [GEMINI PRINTER_CONFIG_UPDATE] Add printer fields to save payload
             printer_type: printerTypeSelect.val(),
             printer_ip: $('#printer_ip').val(),
             printer_port: $('#printer_port').val(),
@@ -130,10 +158,10 @@ $(document).ready(function() {
             data: JSON.stringify({ action: 'save', data: formData }), dataType: 'json',
             success: function(response) {
                 if (response.status === 'success') {
-                    alert(response.message); // "门店信息已成功更新！"
+                    alert(response.message);
                     dataDrawer.hide();
-                    // 注意：这里不自动刷新页面，以便用户可以接着点击“同步”
-                    // window.location.reload(); 
+                    confirmEnableModal.hide();
+                    window.location.reload(); // 成功后刷新
                 } else {
                     alert('保存失败: ' + (response.message || '未知错误'));
                 }
@@ -144,11 +172,61 @@ $(document).ready(function() {
                 } else {
                     alert('保存过程中发生网络或服务器错误。');
                 }
+            },
+            complete: function() {
+                // 恢复所有按钮状态
+                formSubmitButton.prop('disabled', false).text('保存到云端');
+                confirmEnableBtn.prop('disabled', false);
             }
         });
+    }
+
+    // 2. 修改表单提交事件，使其成为一个"网关"
+    form.on('submit', function(e) {
+        e.preventDefault();
+        
+        const originalSystem = form.data('original-billing-system') || 'NONE';
+        const newSystem = $('#billing_system').val();
+
+        // 检查是否是从 'NONE' 变为 'TICKETBAI' 或 'VERIFACTU'
+        if (originalSystem === 'NONE' && (newSystem === 'TICKETBAI' || newSystem === 'VERIFACTU')) {
+            // 是！需要二次确认
+            $('#confirmModalStoreName').text($('#store_name').val() || '新门店');
+            $('#confirmModalNewSystem').text(newSystem);
+            confirmEnableModal.show();
+        } else {
+            // 否，直接保存 (例如：从 'NONE' 保存为 'NONE'，或从 'TICKETBAI' 保存为 'TICKETBAI')
+            performSave();
+        }
     });
+
+    // 3. 为模态框的确认按钮添加点击事件
+    confirmEnableBtn.on('click', function() {
+        performSave(); // 调用实际的保存函数
+    });
+    // --- END: 重构保存逻辑 ---
     
-    // "删除" 按钮
+
+    // --- START: 新增模态框勾选逻辑 ---
+    
+    // 4. 监听模态框的显示事件，重置勾选框和按钮
+    $(confirmEnableModalEl).on('show.bs.modal', function() {
+        confirmInvoiceCheckbox.prop('checked', false);
+        confirmEnableBtn.prop('disabled', true);
+    });
+
+    // 5. 监听勾选框的 change 事件
+    confirmInvoiceCheckbox.on('change', function() {
+        if ($(this).is(':checked')) {
+            confirmEnableBtn.prop('disabled', false);
+        } else {
+            confirmEnableBtn.prop('disabled', true);
+        }
+    });
+    // --- END: 新增模态框勾选逻辑 ---
+
+
+    // "删除" 按钮 (逻辑不变)
     $('.table').on('click', '.delete-btn', function() {
         const dataId = $(this).data('id');
         const dataName = $(this).data('name');
@@ -174,7 +252,7 @@ $(document).ready(function() {
         }
     });
 
-    // --- [GEMINI PRINTER_CONFIG_UPDATE] START: "同步到设备" 按钮 ---
+    // "同步到设备" 按钮 (逻辑不变)
     syncButton.on('click', function() {
         if (typeof window.AndroidBridge === 'undefined' || typeof window.AndroidBridge.savePrinterConfig === 'undefined') {
             alert('错误：找不到 AndroidBridge.savePrinterConfig 接口。\n请确认您是在 TopTea 安卓应用中运行此页面。');
@@ -249,5 +327,4 @@ $(document).ready(function() {
             alert('调用 AndroidBridge 时发生 JavaScript 错误: \n' + e.message);
         }
     });
-    // --- [GEMINI PRINTER_CONFIG_UPDATE] END ---
 });

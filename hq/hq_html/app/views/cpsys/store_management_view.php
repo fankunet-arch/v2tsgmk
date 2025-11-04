@@ -92,10 +92,9 @@
             <div class="mb-3">
                 <label for="billing_system" class="form-label">票据合规系统 <span class="text-danger">*</span></label>
                 <select class="form-select" id="billing_system" name="billing_system" required>
-                    <option value="" selected disabled>-- 请为门店指定法规 --</option>
                     <option value="TICKETBAI">TicketBAI (巴斯克地区)</option>
                     <option value="VERIFACTU">Veri*Factu (西班牙国家标准)</option>
-                    <option value="NONE">不可开票</option>
+                    <option value="NONE" selected>不可开票 (默认)</option>
                 </select>
             </div>
             <div class="row">
@@ -176,4 +175,37 @@
             </div>
         </form>
     </div>
+</div>
+
+<div class="modal fade" id="confirmEnableInvoicingModal" tabindex="-1" aria-labelledby="confirmEnableModalLabel" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark">
+        <h5 class="modal-title" id="confirmEnableModalLabel"><i class="bi bi-exclamation-triangle-fill me-2"></i> 请确认操作</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>您正在为门店 <strong id="confirmModalStoreName"></strong> 开启票据合规系统。</p>
+        <div class="alert alert-warning">
+            <strong>请注意：</strong>
+            <ul class="mb-0">
+                <li>您正在为门店开启 <strong><span id="confirmModalNewSystem"></span></strong> 票据合规系统。</li>
+                <li>开启后，此门店生成的所有新票据将受到该法规的约束。</li>
+                <li>请确保所有税务信息 (NIF) 和配置均已正确填写。</li>
+            </ul>
+        </div>
+        
+        <div class_name="form-check form-switch mt-4 p-3 border rounded bg-light-subtle">
+            <input class="form-check-input" type="checkbox" role="switch" id="confirmInvoiceCheckbox" style="transform: scale(1.4);">
+            <label class="form-check-label h5 ms-2" for="confirmInvoiceCheckbox">
+                我确认开启发票
+            </label>
+        </div>
+        </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-warning" id="btn-confirm-enable-invoicing" disabled>我已了解，确认开启</button>
+      </div>
+    </div>
+  </div>
 </div>
