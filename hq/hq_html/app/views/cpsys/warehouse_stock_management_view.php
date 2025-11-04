@@ -1,3 +1,29 @@
+<?php
+// 定义物料类型映射表
+$material_type_map = [
+    'RAW' => '原料',
+    'SEMI_FINISHED' => '半成品',
+    'PRODUCT' => '成品/直销品',
+    'CONSUMABLE' => '耗材'
+];
+?>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex gap-2">
+        <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input type="text" id="stock-search-input" class="form-control" placeholder="按物料名称搜索...">
+        </div>
+        <div class="input-group" style="width: 200px;">
+            <select class="form-select" id="stock-type-filter">
+                <option value="ALL" selected>-- 所有类型 --</option>
+                <?php foreach ($material_type_map as $key => $value): ?>
+                    <option value="<?php echo $key; ?>"><?php echo htmlspecialchars($value); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+    </div>
+</div>
+
 <div class="card">
     <div class="card-header">
         总仓库存列表
@@ -8,19 +34,23 @@
                 <thead>
                     <tr>
                         <th>物料名称</th>
+                        <th>类型</th>
                         <th>当前库存</th>
                         <th class="text-end">操作</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="stock-table-body">
                     <?php if (empty($stock_items)): ?>
                         <tr>
-                            <td colspan="3" class="text-center">暂无物料，请先在字典中添加。</td>
+                            <td colspan="4" class="text-center">暂无物料，请先在字典中添加。</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($stock_items as $item): ?>
-                            <tr>
+                            <tr data-type="<?php echo htmlspecialchars($item['material_type']); ?>" data-name="<?php echo htmlspecialchars(strtolower($item['material_name'])); ?>">
                                 <td><strong><?php echo htmlspecialchars($item['material_name']); ?></strong></td>
+                                <td>
+                                    <span class="badge text-bg-info"><?php echo $material_type_map[$item['material_type']] ?? '未知'; ?></span>
+                                </td>
                                 <td>
                                     <?php 
                                         $quantity_formatted = number_format($item['quantity'], 2, '.', '');
@@ -44,6 +74,7 @@
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>
+                    <tr id="no-matching-row" style="display: none;"><td colspan="4" class="text-center">没有匹配的物料。</td></tr>
                 </tbody>
             </table>
         </div>

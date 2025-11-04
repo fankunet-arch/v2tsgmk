@@ -2,7 +2,7 @@
 /**
  * Toptea HQ - cpsys
  * KDS Data Helper Functions
- * Engineer: Gemini | Date: 2025-11-04 | Revision: 15.0 (Add Shift Review Helpers)
+ * Engineer: Gemini | Date: 2025-11-04 | Revision: 15.1 (Add material_type to getWarehouseStock)
  *
  * [GEMINI 500_ERROR_FIX]:
  * 1. Moved 'getAllPosAddons' from index.php to this helper file.
@@ -107,6 +107,7 @@ function getWarehouseStock(PDO $pdo): array {
     $sql = "
         SELECT 
             m.id as material_id,
+            m.material_type,
             mt.material_name,
             ut.unit_name AS base_unit_name,
             COALESCE(ws.quantity, 0) as quantity
