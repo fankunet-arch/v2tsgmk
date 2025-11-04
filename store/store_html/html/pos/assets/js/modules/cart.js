@@ -3,7 +3,7 @@
  *
  * - 修复：将 import { refreshCartUI } from './ui.js'
  * - 修正为：import { refreshCartUI } from '../ui.js'
- * 以解决循环依赖并匹配 main.js 的模块结构。
+ * - V2: addToCart 时注入双语数据 (title_zh/es, variant_name_zh/es)
  */
 import { STATE } from '../state.js';
 // --- 核心修复：路径从 './ui.js' 改为 '../ui.js' ---
@@ -38,12 +38,23 @@ export function addToCart() {
         const addon = STATE.addons.find(a => a.key === key);
         if (addon) finalPrice += parseFloat(addon.price_eur);
     });
+
+    // --- START V2 BILINGUAL FIX ---
     STATE.cart.push({
         id: `item_${Date.now()}`,
         product_id: product.id,
         variant_id: variant.id,
+        
+        // 旧字段 (用于UI显示)
         title: STATE.lang === 'es' ? product.title_es : product.title_zh,
         variant_name: STATE.lang === 'es' ? variant.name_es : variant.name_zh,
+
+        // 新增双语字段 (用于后端打印)
+        title_zh: product.title_zh,
+        title_es: product.title_es,
+        variant_name_zh: variant.name_zh,
+        variant_name_es: variant.name_es,
+
         qty: 1,
         unit_price_eur: finalPrice,
         ice,
@@ -51,6 +62,8 @@ export function addToCart() {
         addons,
         remark
     });
+    // --- END V2 BILINGUAL FIX ---
+
     calculatePromotions();
     bootstrap.Offcanvas.getInstance('#customizeOffcanvas').hide();
 }

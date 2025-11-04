@@ -329,8 +329,17 @@ try {
           ->execute([$invoice_id, $user_id]);
   }
 
-  $sql_item = "INSERT INTO pos_invoice_items (invoice_id, item_name, variant_name, quantity, unit_price, unit_taxable_base, vat_rate, vat_amount, customizations) VALUES (?,?,?,?,?,?,?,?,?)";
+  // --- [Q1 FIX] START: Update INSERT statement to include bilingual fields ---
+  $sql_item = "INSERT INTO pos_invoice_items (
+                   invoice_id, menu_item_id, variant_id, 
+                   item_name, variant_name, 
+                   item_name_zh, item_name_es, variant_name_zh, variant_name_es,
+                   quantity, 
+                   unit_price, unit_taxable_base, vat_rate, 
+                   vat_amount, customizations
+               ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
   $stmt_item = $pdo->prepare($sql_item);
+  // --- [Q1 FIX] END ---
 
   // (Plan II-4) 准备杯贴打印数据包
   $print_jobs = [];
@@ -344,15 +353,36 @@ try {
     $item_vat_amount = round($item_total - $item_tax_base_total, 2);
     $unit_tax_base = ($qty > 0) ? round($item_tax_base_total / $qty, 4) : 0;
     $custom = ['ice' => $item['ice'] ?? null, 'sugar' => $item['sugar'] ?? null, 'addons' => $item['addons'] ?? [], 'remark' => $item['remark'] ?? ''];
+    
+    // --- [Q1 FIX] START: Prepare bilingual data and IDs ---
+    
+    // 旧字段: 保存下单时的语言 (来自 cart.js 的 'title' 和 'variant_name')
+    $item_name_to_db = (string)($item['title'] ?? ($item['name'] ?? ''));
+    $variant_name_to_db = (string)($item['variant_name'] ?? '');
+    
+    // 新字段: 保存双语
+    $item_name_zh_to_db = (string)($item['title_zh'] ?? '');
+    $item_name_es_to_db = (string)($item['title_es'] ?? '');
+    $variant_name_zh_to_db = (string)($item['variant_name_zh'] ?? '');
+    $variant_name_es_to_db = (string)($item['variant_name_es'] ?? '');
+
+    // 获取ID (product_id 来自 cart.js，是 menu_item_id)
+    $menu_item_id_to_db = isset($item['product_id']) ? (int)$item['product_id'] : null;
+    $variant_id_to_db = isset($item['variant_id']) ? (int)$item['variant_id'] : null;
+    
     $stmt_item->execute([
-      $invoice_id, (string)($item['title'] ?? ($item['name'] ?? '')), (string)($item['variant_name'] ?? ''),
-      $qty, $unit_price, $unit_tax_base, $vat_rate, $item_vat_amount, json_encode($custom, JSON_UNESCAPED_UNICODE)
+      $invoice_id, $menu_item_id_to_db, $variant_id_to_db,
+      $item_name_to_db, $variant_name_to_db,
+      $item_name_zh_to_db, $item_name_es_to_db, $variant_name_zh_to_db, $variant_name_es_to_db,
+      $qty, $unit_price, $unit_tax_base, $vat_rate, $item_vat_amount, 
+      json_encode($custom, JSON_UNESCAPED_UNICODE)
     ]);
+    // --- [Q1 FIX] END ---
 
     // (Plan II-4) 格式化定制详情
     $customizations_parts = [];
-    if (!empty($custom['ice'])) $customizations_parts[] = 'Ice:' . $custom['ice'] . '%';
-    if (!empty($custom['sugar'])) $customizations_parts[] = 'Sugar:' . $custom['sugar'] . '%';
+    if (!empty($custom['ice'])) $customizations_parts[] = 'Ice:' . $custom['ice'] . '%'; // (未来这里也应该改为双语)
+    if (!empty($custom['sugar'])) $customizations_parts[] = 'Sugar:' . $custom['sugar'] . '%'; // (未来这里也应该改为双语)
     if (!empty($custom['addons'])) $customizations_parts[] = '+' . implode(',+', $custom['addons']);
     
     // (Plan II-4) 为此购物车的每一“杯”创建打印作业
@@ -361,8 +391,17 @@ try {
             'type' => 'CUP_STICKER',
             'data' => [
                 'cup_order_number' => $full_invoice_number,
-                'item_name' => (string)($item['title'] ?? ($item['name'] ?? '')),
-                'variant_name' => (string)($item['variant_name'] ?? ''),
+                
+                // 遗留变量 (使用中文)
+                'item_name' => $item_name_zh_to_db,
+                'variant_name' => $variant_name_zh_to_db,
+                
+                // 新增双语变量
+                'item_name_zh' => $item_name_zh_to_db,
+                'item_name_es' => $item_name_es_to_db,
+                'variant_name_zh' => $variant_name_zh_to_db,
+                'variant_name_es' => $variant_name_es_to_db,
+                
                 'customization_detail' => implode(' / ', $customizations_parts),
                 'remark' => (string)($custom['remark'] ?? ''),
                 'store_name' => $store_config['store_name'] ?? ''
