@@ -137,7 +137,8 @@ switch ($page) {
         $page_title = '总仓库存';
         $stock_items = getWarehouseStock($pdo);
         $content_view = APP_PATH . '/views/cpsys/warehouse_stock_management_view.php';
-        $page_js = 'warehouse_stock_management.js';
+        // ***** 唯一的修改点在这里 *****
+        $page_js = 'warehouse_stock_logic.js';
         break;
         
     case 'stock_allocation':
