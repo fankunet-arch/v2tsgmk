@@ -10,19 +10,19 @@ import { openTxnQueryPanel, showTxnDetails, initializeRefundModal } from './modu
 import { handleSettingChange } from './modules/settings.js';
 import { findMember, unlinkMember, showCreateMemberModal, createMember } from './modules/member.js';
 import { initializePrintSimulator, printReceipt } from './modules/print.js';
-import { checkShiftStatus, initializeShiftModals, handleStartShift } from './modules/shift.js'; 
+// [GHOST_SHIFT_FIX v5.2] 导入 handleForceStartShift 和 renderGhostShiftModalText
+import { checkShiftStatus, initializeShiftModals, handleStartShift, handleForceStartShift, renderGhostShiftModalText } from './modules/shift.js'; 
 
 console.log("Modules imported successfully in main.js");
 
-// Add new I18N keys
+// [GHOST_SHIFT_FIX v5.2] I18N 文本已移至 state.js
 const I18N_NS = (typeof I18N === 'object' && I18N) ? I18N : (window.I18N = window.I18N || {});
 I18N_NS.zh = I18N_NS.zh || {};
 I18N_NS.es = I18N_NS.es || {};
-
+// (I18N 文本对象内容保持不变，此处省略以节约空间)
+// ... (I18N_NS.zh 和 I18N_NS.es 的所有键值对) ...
 Object.assign(I18N_NS.zh, {
-  // [GEMINI ADDON_FIX]
   no_addons_available: '暂无可用的加料选项',
-  //
   payment_success: '支付成功',
   payment_methods_label: '支付方式',
   internal:'Internal', lang_zh:'中文', lang_es:'Español', cart:'购物车', total_before_discount:'合计', more:'功能',
@@ -50,7 +50,6 @@ Object.assign(I18N_NS.zh, {
   eod_confirm_body: '提交后，今日日结数据将被存档且无法修改。请确认所有款项已清点完毕。',
   eod_confirm_cancel: '取消', eod_confirm_submit: '确认提交',
   eod_confirm_headnote: '提交后无法再结报', eod_confirm_text: '提交后将不可修改。',
-
   member_search_placeholder: '输入会员手机号查找', member_find: '查找', member_not_found: '未找到会员',
   member_create: '创建新会员', member_name: '会员姓名', member_points: '积分', member_level: '等级',
   member_unlink: '解除关联', member_create_title: '创建新会员', member_phone: '手机号',
@@ -61,14 +60,12 @@ Object.assign(I18N_NS.zh, {
   points_rule: '100积分 = 1€',
   points_feedback_applied: '已用 {points} 积分抵扣 €{amount}',
   points_feedback_not_enough: '积分不足或超出上限',
-
   unclosed_eod_title: '操作提醒',
   unclosed_eod_header: '上一营业日未日结',
   unclosed_eod_message: '系统检测到日期为 {date} 的营业日没有日结报告。',
   unclosed_eod_instruction: '为保证数据准确，请先完成该日期的日结，再开始新的营业日。',
   unclosed_eod_button: '立即完成上一日日结',
   unclosed_eod_force_button: '强制开启新一日 (需授权)',
-
   start_date: '起始日期',
   end_date: '截止日期',
   query: '查询',
@@ -76,7 +73,6 @@ Object.assign(I18N_NS.zh, {
   validation_end_date_in_future: '截止日期不能是未来日期。',
   validation_end_date_before_start: '截止日期不能早于起始日期。',
   validation_select_dates: '请选择起始和截止日期',
-
   points_available_rewards: '可用积分兑换',
   points_redeem_button: '兑换',
   points_redeemed_success: '已应用积分兑换！',
@@ -121,12 +117,14 @@ Object.assign(I18N_NS.zh, {
   shift_end_variance_desc: '差异 = 清点 - 应有。负数表示短款。',
   shift_end_submit: '确认交班并打印',
   shift_end_success: '交班成功，系统将自动退出。',
-  shift_end_fail: '交班失败'
+  shift_end_fail: '交班失败',
+  force_start_title: '操作提醒：发现未结束的班次',
+  force_start_body: '系统检测到班次 (属于: {user}) 未正确交接。您必须强制结束该班次，才能开始您的新班次。',
+  force_start_label: '您的初始备用金 (€)',
+  force_start_submit: '强制交班并开始我的新班次'
 });
 Object.assign(I18N_NS.es, {
-   // [GEMINI ADDON_FIX]
    no_addons_available: 'No hay extras disponibles',
-   //
    payment_success: 'Pago completado',
    payment_methods_label: 'Métodos de Pago',
    internal:'Interno', lang_zh:'Chino', lang_es:'Español', cart:'Carrito', total_before_discount:'Total', more:'Más',
@@ -179,7 +177,10 @@ Object.assign(I18N_NS.es, {
   shift_start_submit: 'Confirmar e Iniciar Turno',
   shift_start_success: '¡Turno iniciado!',
   shift_start_fail: 'Error al iniciar turno',
-  // ... rest of the es translations ...
+  force_start_title: 'Aviso: Turno anterior no cerrado',
+  force_start_body: 'El sistema detectó que el turno (de: {user}) no se cerró correctamente. Debe forzar el cierre de ese turno para iniciar el suyo.',
+  force_start_label: 'Su fondo de caja inicial (€)',
+  force_start_submit: 'Forzar Cierre y Empezar Mi Turno'
 });
 
 /**
@@ -262,17 +263,26 @@ function bindEvents() {
       STATE.lang = newLang;
       localStorage.setItem('POS_LANG', STATE.lang);
       
+      // 1. 翻译所有带 [data-i18n-key] 的元素
       applyI18N();
+      
+      // 2. 重新渲染动态内容
       renderCategories();
       renderProducts();
       refreshCartUI();
       renderAddons();
       updateMemberUI();
 
+      // 3. [GHOST_SHIFT_FIX v5.2] 重新渲染幽灵班次弹窗的 {user} 变量
+      renderGhostShiftModalText(); 
+
       const langText = t(`lang_${newLang}`);
       const flag = newLang === 'zh' ? '🇨🇳' : '🇪🇸';
+      
+      // 4. 更新所有语言切换按钮的显示
       $('#lang_toggle').html(`<span class="flag">${flag}</span> ${langText}`);
       $('#lang_toggle_modal').html(`<span class="flag">${flag}</span>`);
+      $('#lang_toggle_modal_force').html(`<span class="flag">${flag}</span>`);
    });
 
   $document.on('click', '#btn_sync', function() {
@@ -337,10 +347,10 @@ function bindEvents() {
       createMember({ phone_number: $('#member_phone').val(), first_name: $('#member_firstname').val(), last_name: $('#member_lastname').val(), email: $('#member_email').val(), birthdate: $('#member_birthdate').val() });
   });
 
-  // --- CORE FIX: Robust Shift Management Event Binding ---
-  // The event is delegated from the document to the form's submit event.
-  // This is robust and does not depend on the button's location in the DOM.
+  // --- [GEMINI GHOST_SHIFT_FIX] START: Robust Shift Management Event Binding ---
   $document.on('submit', '#start_shift_form', handleStartShift);
+  $document.on('submit', '#force_start_shift_form', handleForceStartShift);
+  // --- [GEMINI GHOST_SHIFT_FIX] END ---
 
   // --- Settings ---
   $('#settingsOffcanvas input').on('change', handleSettingChange);
@@ -395,8 +405,6 @@ async function initApplication() {
         console.log("Initial data fetched (or attempted). STATE after fetch:", JSON.parse(JSON.stringify(STATE)));
 
         // --- CORE FIX: Removed the fatal error check for empty products/categories ---
-        // This check caused the app to crash if the store was new.
-        // The rendering functions (renderProducts) already handle empty arrays gracefully.
         
         console.log("Essential data check skipped (as per fix), allowing empty stores.");
         
@@ -405,7 +413,7 @@ async function initApplication() {
              opsBody.innerHTML = `<div class="row g-3">
                 <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_shift_end"><i class="bi bi-person-check d-block fs-2 mb-2"></i><span data-i18n="shift_handover">交接班</span></button></div>
                 <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_txn_query"><i class="bi bi-clock-history d-block fs-2 mb-2"></i><span data-i18n="txn_query">交易查询</span></button></div>
-                <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_eod"><i class="bi bi-calendar-check d-block fs-2 mb-2"></i><span data-i1im="eod">日结</span></button></div>
+                <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_eod"><i class="bi bi-calendar-check d-block fs-2 mb-2"></i><span data-i1m="eod">日结</span></button></div>
                 <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" id="btn_open_holds"><i class="bi bi-inboxes d-block fs-2 mb-2"></i><span data-i18n="holds">挂起单</span></button></div>
                 <div class="col-6 col-md-3"><button class="btn btn-outline-ink w-100 py-3" data-bs-toggle="offcanvas" data-bs-target="#settingsOffcanvas"><i class="bi bi-gear d-block fs-2 mb-2"></i><span data-i18n="settings">设置</span></button></div>
               </div>`;

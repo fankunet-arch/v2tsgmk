@@ -5,7 +5,7 @@
  * - 高峰模式：按钮/开关均可用
  * - 兼容旧键：POS_HAND_MODE / POS_LEFTY / POS_RIGHTY
  * - 额外桥接：点击包含 hand_mode 的整行也会触发切换（防止“选中了但未触发事件”）
- * Revision: 2.5.0 (Add SIF Declaration State)
+ * Revision: 2.6.0 (Add Ghost Shift Info State)
  */
 
 //////////////////// I18N ////////////////////
@@ -42,8 +42,11 @@ export const I18N = {
     member_unlink: '解除关联', member_create_title: '创建新会员', member_phone: '手机号',
     member_firstname: '名字', member_lastname: '姓氏', member_email: '邮箱', member_birthdate: '生日',
     member_create_submit: '创建并关联', member_create_success: '新会员已创建并关联到订单！',
-    points_redeem_placeholder: '使用积分', points_apply_btn: '应用', points_rule: '100积分 = 1€',
-    points_feedback_applied: '已用 {points} 积分抵扣 €{amount}', points_feedback_not_enough: '积分不足或超出上限',
+    points_redeem_placeholder: '使用积分',
+    points_apply_btn: '应用',
+    points_rule: '100积分 = 1€',
+    points_feedback_applied: '已用 {points} 积分抵扣 €{amount}',
+    points_feedback_not_enough: '积分不足或超出上限',
 
     unclosed_eod_title: '操作提醒',
     unclosed_eod_header: '上一营业日未日结',
@@ -58,6 +61,7 @@ export const I18N = {
     validation_date_range_too_large: '查询范围不能超过一个月。',
     validation_end_date_in_future: '截止日期不能是未来日期。',
     validation_end_date_before_start: '截止日期不能早于起始日期。',
+    validation_select_dates: '请选择起始和截止日期',
 
     points_available_rewards: '可用积分兑换',
     points_redeem_button: '兑换',
@@ -71,7 +75,12 @@ export const I18N = {
     print_data_fetch_failed: '获取打印数据失败',
     print_template_missing: '找不到对应的打印模板',
     print_preview_title: '打印预览 (模拟)',
-    close: '关闭'
+    close: '关闭',
+    // [GEMINI GHOST_SHIFT_FIX v5.2]
+    force_start_title: '操作提醒：发现未结束的班次',
+    force_start_body: '系统检测到班次 (属于: {user}) 未正确交接。您必须强制结束该班次，才能开始您的新班次。',
+    force_start_label: '您的初始备用金 (€)',
+    force_start_submit: '强制交班并开始我的新班次'
   },
   es: {
     internal:'Interno', lang_zh:'Chino', lang_es:'Español', cart:'Carrito', total_before_discount:'Total', more:'Más',
@@ -98,7 +107,6 @@ export const I18N = {
     eod_success_submit: '¡Cierre archivado!', eod_confirm_title: 'Confirmar Cierre', eod_confirm_body: 'Será definitivo.',
     eod_confirm_cancel: 'Cancelar', eod_confirm_submit: 'Confirmar',
     eod_confirm_headnote: 'Después del envío no se podrá volver a cerrar', eod_confirm_text: 'Será definitivo.',
-
     member_search_placeholder: 'Buscar socio por teléfono', member_find: 'Buscar', member_not_found: 'Socio no encontrado',
     member_create: 'Crear nuevo socio', member_name: 'Nombre', member_points: 'Puntos', member_level: 'Nivel',
     member_unlink: 'Desvincular', member_create_title: 'Crear Nuevo Socio', member_phone: 'Teléfono',
@@ -107,34 +115,29 @@ export const I18N = {
     points_redeem_placeholder: 'Usar puntos', points_apply_btn: 'Aplicar', points_rule: '100 puntos = 1€',
     points_feedback_applied: '{points} puntos aplicados, descuento de €{amount}',
     points_feedback_not_enough: 'Puntos insuficientes o excede el límite',
-
     unclosed_eod_title: 'Aviso de Operación',
     unclosed_eod_header: 'Día Anterior No Cerrado',
     unclosed_eod_message: 'El sistema detectó que el día hábil con fecha {date} no tiene informe de cierre.',
     unclosed_eod_instruction: 'Para garantizar la precisión de los datos, complete primero el cierre de ese día antes de comenzar un nuevo día hábil.',
     unclosed_eod_button: 'Completar Cierre Anterior Ahora',
     unclosed_eod_force_button: 'Forzar Inicio Nuevo Día (Requiere Autorización)',
-
     start_date: 'Fecha de inicio',
     end_date: 'Fecha de finalización',
     query: 'Consultar',
     validation_date_range_too_large: 'El rango de fechas no puede exceder un mes.',
     validation_end_date_in_future: 'La fecha de finalización no puede ser futura.',
     validation_end_date_before_start: 'La fecha de finalización no puede ser anterior a la de inicio.',
-
-    points_available_rewards: 'Recompensas Disponibles',
-    points_redeem_button: 'Canjear',
-    points_redeemed_success: '¡Canje de puntos aplicado!',
-    points_insufficient: 'Puntos insuficientes para canjear.',
-    redemption_incompatible: 'El canje de puntos no se puede usar con un cupón.',
-    redemption_applied: 'Canjeado',
-     // --- Add EOD Print ---
-    eod_print_report: 'Imprimir Informe',
-    print_failed: 'Fallo de impresión',
-    print_data_fetch_failed: 'Fallo al obtener datos de impresión',
-    print_template_missing: 'Plantilla de impresión no encontrada',
-    print_preview_title: 'Vista Previa de Impresión (Simulado)',
-    close: 'Cerrar'
+    shift_start_title: 'Iniciar Turno',
+    shift_start_body: 'Antes de comenzar, ingrese el fondo de caja inicial.',
+    shift_start_label: 'Fondo de Caja (€)',
+    shift_start_submit: 'Confirmar e Iniciar Turno',
+    shift_start_success: '¡Turno iniciado!',
+    shift_start_fail: 'Error al iniciar turno',
+    // [GEMINI GHOST_SHIFT_FIX v5.2]
+    force_start_title: 'Aviso: Turno anterior no cerrado',
+    force_start_body: 'El sistema detectó que el turno (de: {user}) no se cerró correctamente. Debe forzar el cierre de ese turno para iniciar el suyo.',
+    force_start_label: 'Su fondo de caja inicial (€)',
+    force_start_submit: 'Forzar Cierre y Empezar Mi Turno'
   }
 };
 
@@ -167,7 +170,10 @@ export const STATE = {
 
   // 新字段
   ui: { selected_category_id: null, search_text: '', hand: 'right', peak: false },
-  flags: { loading: false }
+  flags: { loading: false },
+  
+  // [GHOST_SHIFT_FIX v5.2] 存储幽灵班次信息
+  ghostShiftInfo: null 
 };
 if (typeof window !== 'undefined') window.STATE = STATE;
 
