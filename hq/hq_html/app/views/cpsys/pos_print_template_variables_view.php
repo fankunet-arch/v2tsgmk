@@ -1,9 +1,12 @@
 <?php
 /**
  * TopTea HQ - POS Print Template Variables View
- * Version: 3.1.0
- * Engineer: Gemini | Date: 2025-10-30
- * Update: Added variables and default template for EXPIRY_LABEL (Plan II-3, II-4).
+ * Version: 3.5.0 (Receipts are now Bilingual)
+ * Engineer: Gemini | Date: 2025-11-04
+ * Update:
+ * 1. [Q1 FIX] All item loop variables (Receipt/Kitchen/Cup) are now bilingual.
+ * The DB snapshot table `pos_invoice_items` has been upgraded.
+ * 2. [Q2 FIX] Added fallback default templates.
  */
 
 // Helper to format and display JSON
@@ -28,19 +31,94 @@ function render_json_template($title, $json_content) {
     echo '</div>';
 }
 
-// (New) Define default template for Expiry Label
-$default_templates['EXPIRY_LABEL'] = '[
+// --- [Q2 FIX] START: Define fallback default templates ---
+// These will be used if they weren't loaded from the DB by index.php
+
+$default_templates['RECEIPT'] = $default_templates['RECEIPT'] ?? '[
+    {"type": "text", "value": "{store_name}", "align": "center", "size": "double"},
+    {"type": "text", "value": "{store_address}", "align": "center", "size": "normal"},
+    {"type": "text", "value": "NIF: {store_tax_id}", "align": "center", "size": "normal"},
+    {"type": "divider", "char": "-"},
+    {"type": "kv", "key": "Factura Simplificada", "value": "{invoice_number}"},
+    {"type": "kv", "key": "Fecha (Date)", "value": "{issued_at}"},
+    {"type": "kv", "key": "Cajero (Cashier)", "value": "{cashier_name}"},
+    {"type": "divider", "char": "-"},
+    {"type": "items_loop", "items": [
+        {"type": "text", "value": "{item_name_es}", "align": "left", "size": "normal"},
+        {"type": "text", "value": "{item_name_zh}", "align": "left", "size": "normal"},
+        {"type": "kv", "key": "  {item_qty} x {item_unit_price}", "value": "{item_total_price}"},
+        {"type": "text", "value": "  ( {item_customizations} )", "align": "left", "size": "normal"}
+    ]},
+    {"type": "divider", "char": "-"},
+    {"type": "kv", "key": "Subtotal", "value": "{subtotal}"},
+    {"type": "kv", "key": "Descuento", "value": "{discount_amount}"},
+    {"type": "kv", "key": "TOTAL", "value": "{final_total}", "bold_value": true},
+    {"type": "divider", "char": "-"},
+    {"type": "kv", "key": "Base Imponible", "value": "{taxable_base}"},
+    {"type": "kv", "key": "IVA", "value": "{vat_amount}"},
+    {"type": "divider", "char": "."},
+    {"type": "text", "value": "{payment_methods}", "align": "left", "size": "normal"},
+    {"type": "kv", "key": "Cambio", "value": "{change}"},
+    {"type": "feed", "lines": 1},
+    {"type": "qr_code", "value": "{qr_code}", "align": "center"},
+    {"type": "text", "value": "Gracias por su visita", "align": "center", "size": "normal"},
+    {"type": "feed", "lines": 3},
+    {"type": "cut"}
+]';
+
+$default_templates['KITCHEN_ORDER'] = $default_templates['KITCHEN_ORDER'] ?? '[
+    {"type": "text", "value": "Pedido Cocina: {invoice_number}", "align": "left", "size": "double"},
+    {"type": "kv", "key": "Hora:", "value": "{issued_at}", "bold_value": false},
+    {"type": "divider", "char": "="},
+    {"type": "items_loop", "items": [
+        {"type": "text", "value": "{item_qty} x {item_name_zh}", "align": "left", "size": "double"},
+        {"type": "text", "value": "( {item_variant_zh} )", "align": "left", "size": "normal"},
+        {"type": "text", "value": ">> {item_customizations}", "align": "left", "size": "double"}
+    ]},
+    {"type": "divider", "char": "="},
+    {"type": "feed", "lines": 3},
+    {"type": "cut"}
+]';
+
+$default_templates['EOD_REPORT'] = $default_templates['EOD_REPORT'] ?? '[
+    {"type": "text", "value": "Informe Cierre Diario (Z)", "align": "center", "size": "double"},
+    {"type": "kv", "key": "Tienda", "value": "{store_name}"},
+    {"type": "kv", "key": "Fecha Informe", "value": "{report_date}"},
+    {"type": "kv", "key": "Hora Impresión", "value": "{print_time}"},
+    {"type": "kv", "key": "Cajero", "value": "{user_name}"},
+    {"type": "divider", "char": "="},
+    {"type": "text", "value": "RESUMEN DE VENTAS", "align": "left", "size": "normal"},
+    {"type": "divider", "char": "-"},
+    {"type": "kv", "key": "Nº Transacciones", "value": "{transactions_count}"},
+    {"type": "kv", "key": "Ventas Brutas", "value": "{system_gross_sales}"},
+    {"type": "kv", "key": "Descuentos", "value": "{system_discounts}"},
+    {"type": "kv", "key": "Ventas Netas", "value": "{system_net_sales}"},
+    {"type": "kv", "key": "Impuestos (IVA)", "value": "{system_tax}"},
+    {"type": "divider", "char": "="},
+    {"type": "text", "value": "RESUMEN DE CAJA", "align": "left", "size": "normal"},
+    {"type": "divider", "char": "-"},
+    {"type": "kv", "key": "Sistema: Efectivo", "value": "{system_cash}"},
+    {"type": "kv", "key": "Sistema: Tarjeta", "value": "{system_card}"},
+    {"type": "kv", "key": "Sistema: Plataforma", "value": "{system_platform}"},
+    {"type": "divider", "char": "-"},
+    {"type": "kv", "key": "EFECTIVO CONTADO", "value": "{counted_cash}", "bold_value": true},
+    {"type": "kv", "key": "DIFERENCIA", "value": "{cash_discrepancy}", "bold_value": true},
+    {"type": "feed", "lines": 3},
+    {"type": "cut"}
+]';
+
+$default_templates['EXPIRY_LABEL'] = $default_templates['EXPIRY_LABEL'] ?? '[
     {
         "type": "text",
-        "value": "**{material_name}**",
+        "value": "{material_name}",
         "align": "left",
-        "size": "double"
+        "size": "normal"
     },
     {
         "type": "text",
-        "value": "**{material_name_es}**",
+        "value": "{material_name_es}",
         "align": "left",
-        "size": "double"
+        "size": "normal"
     },
     {
         "type": "divider",
@@ -48,28 +126,26 @@ $default_templates['EXPIRY_LABEL'] = '[
     },
     {
         "type": "kv",
-        "key": "开封 ABRE",
+        "key": "Ini:",
         "value": "{opened_at_time}"
     },
     {
         "type": "kv",
-        "key": "过期 CADUCA",
-        "value": "**{expires_at_time}**",
+        "key": "Cad:",
+        "value": "{expires_at_time}",
         "bold_value": true
     },
     {
         "type": "kv",
-        "key": "操作员",
+        "key": "Op:",
         "value": "{operator_name}"
     },
     {
         "type": "feed",
         "lines": 1
-    },
-    {
-        "type": "cut"
     }
 ]';
+// --- [Q2 FIX] END ---
 ?>
 
 <div class="row">
@@ -112,18 +188,25 @@ $default_templates['EXPIRY_LABEL'] = '[
                 </table>
 
                 <h6 class="mt-4">商品循环变量 (在 "items_loop" 中使用)</h6>
+                <div class="alert alert-success small">
+                    <b>好消息:</b> 感谢数据库升级，现在小票和厨房单的商品循环 **完全支持双语**。
+                </div>
                  <table class="table table-sm table-bordered">
                     <thead><tr><th>变量</th><th>说明</th></tr></thead>
                     <tbody>
-                        <tr><td><code>{item_name}</code></td><td>商品名称</td></tr>
-                        <tr><td><code>{item_variant}</code></td><td>商品规格</td></tr>
+                        <tr><td><code>{item_name_zh}</code></td><td><b>(推荐)</b> 商品名称 (中文)</td></tr>
+                        <tr><td><code>{item_name_es}</code></td><td><b>(推荐)</b> 商品名称 (西语)</td></tr>
+                        <tr><td><code>{variant_name_zh}</code></td><td><b>(推荐)</b> 规格名称 (中文)</td></tr>
+                        <tr><td><code>{variant_name_es}</code></td><td><b>(推荐)</b> 规格名称 (西语)</td></tr>
                         <tr><td><code>{item_qty}</code></td><td>商品数量</td></tr>
                         <tr><td><code>{item_unit_price}</code></td><td>商品单价 (含税)</td></tr>
                         <tr><td><code>{item_total_price}</code></td><td>商品行总价 (含税)</td></tr>
-                        <tr><td><code>{item_customizations}</code></td><td>商品自定义选项 (如: 少冰, 少糖)</td></tr>
+                        <tr><td><code>{item_customizations}</code></td><td>商品自定义选项 (<b>单语言</b>)</td></tr>
+                        <tr><td><code>{item_name}</code></td><td>商品名称 (下单时语言)</td></tr>
+                        <tr><td><code>{item_variant}</code></td><td>商品规格 (下单时语言)</td></tr>
                     </tbody>
                 </table>
-            </div>
+                </div>
         </div>
     </div>
 
@@ -157,7 +240,6 @@ $default_templates['EXPIRY_LABEL'] = '[
         </div>
     </div>
 
-    <!-- NEW SECTION: CUP_STICKER (Plan II-4) -->
     <div class="col-lg-6 mb-4">
         <div class="card h-100">
             <div class="card-header bg-warning text-dark">
@@ -165,22 +247,26 @@ $default_templates['EXPIRY_LABEL'] = '[
             </div>
             <div class="card-body">
                 <p class="card-text">用于 `CUP_STICKER` 类型的模板。此数据包由 `submit_order.php` 针对订单中的 *每一项商品* 单独生成。</p>
+                <div class="alert alert-success small">
+                    <b>提示:</b> 杯贴变量是实时生成的，<b>支持双语</b>。
+                </div>
                 <table class="table table-sm table-bordered">
                     <thead><tr><th>变量</th><th>说明</th></tr></thead>
                     <tbody>
                         <tr><td><code>{cup_order_number}</code></td><td>杯号 (例如: A2025-XXXX)</td></tr>
-                        <tr><td><code>{item_name}</code></td><td>商品名称 (例如: 珍珠奶茶)</td></tr>
-                        <tr><td><code>{variant_name}</code></td><td>规格名称 (例如: 中杯)</td></tr>
-                        <tr><td><code>{customization_detail}</code></td><td>定制详情 (例如: 少冰/50%糖/加珍珠)</td></tr>
+                        <tr><td><code>{customization_detail}</code></td><td>定制详情 (<b>单语言</b>, 如: 少冰/50%糖)</td></tr>
                         <tr><td><code>{remark}</code></td><td>备注信息</td></tr>
                         <tr><td><code>{store_name}</code></td><td>门店名称</td></tr>
+                        <tr><td colspan="2"><hr class="my-1"></td></tr>
+                        <tr><td><code>{item_name_zh}</code></td><td><b>(推荐)</b> 商品名称 (中文)</td></tr>
+                        <tr><td><code>{item_name_es}</code></td><td><b>(推荐)</b> 商品名称 (西语)</td></tr>
+                        <tr><td><code>{variant_name_zh}</code></td><td><b>(推荐)</b> 规格名称 (中文)</td></tr>
+                        <tr><td><code>{variant_name_es}</code></td><td><b>(推荐)</b> 规格名称 (西语)</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
-
-    <!-- NEW SECTION: EXPIRY_LABEL (Plan II-3) -->
     <div class="col-lg-6 mb-4">
         <div class="card h-100">
             <div class="card-header bg-primary text-white">
@@ -210,12 +296,11 @@ $default_templates['EXPIRY_LABEL'] = '[
 <div class="row">
     <div class="col-12">
         <?php 
+        // [Q2 FIX] These will now render the fallback defaults defined above if not found in the DB
         render_json_template('默认顾客小票 (RECEIPT)', $default_templates['RECEIPT'] ?? '');
         render_json_template('默认厨房出品单 (KITCHEN_ORDER)', $default_templates['KITCHEN_ORDER'] ?? '');
         render_json_template('默认日结报告 (EOD_REPORT)', $default_templates['EOD_REPORT'] ?? '');
-        // (New) Render the new default template
         render_json_template('默认效期标签 (EXPIRY_LABEL)', $default_templates['EXPIRY_LABEL'] ?? '');
         ?>
     </div>
 </div>
-

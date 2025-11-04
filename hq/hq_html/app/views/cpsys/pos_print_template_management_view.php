@@ -1,13 +1,15 @@
 <?php
 /**
  * TopTea HQ - POS Print Template Management View
- * Version: 6.1.0
- * Engineer: Gemini | Date: 2025-11-03
+ * Version: 6.2.0 (FIX: Enable QR Code variable editing)
+ * Engineer: Gemini | Date: 2025-11-04
  * Update:
- * 1. Added a real-time HTML Mock Preview pane.
- * 2. Widened Offcanvas to 90vw and refactored to a 3-column layout (3, 5, 4).
- * 3. Improved helper text for K/V components.
- * 4. Added new div#template-preview-paper for dynamic size switching.
+ * 1. Removed 'readonly' attribute from the QR code component's value input.
+ * 2. Added a 'placeholder' to the QR code input for better UX.
+ * 3. (Previous) Added real-time HTML Mock Preview pane.
+ * 4. (Previous) Widened Offcanvas to 90vw and refactored to a 3-column layout (3, 5, 4).
+ * 5. (Previous) Improved helper text for K/V components.
+ * 6. (Previous) Added new div#template-preview-paper for dynamic size switching.
  */
 
 // Helper function to get a readable name for template types
@@ -277,7 +279,7 @@ $physical_sizes = [
         <div class="d-flex align-items-center">
             <i class="bi bi-grip-vertical drag-handle me-2"></i>
             <span class="badge text-bg-info me-3">二维码</span>
-            <input type="text" class="form-control form-control-sm prop-value" value="{qr_code}" readonly>
+            <input type="text" class="form-control form-control-sm prop-value" value="{qr_code}" placeholder="输入变量 (例如: {cup_order_number})">
             <select class="form-select form-select-sm ms-2 prop-align" style="width: 100px;">
                 <option value="left">居左</option>
                 <option value="center" selected>居中</option>

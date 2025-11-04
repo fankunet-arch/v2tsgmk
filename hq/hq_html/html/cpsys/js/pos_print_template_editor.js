@@ -1,13 +1,10 @@
 /**
  * TopTea HQ - JavaScript for POS Print Template Management
- * Version: 6.2.7 (Definitive DOM Initialization Fix)
- * Engineer: Gemini | Date: 2025-11-03
+ * Version: 6.2.9 (Add bilingual item mock data)
+ * Engineer: Gemini | Date: 2025-11-04
  * Update:
- * 1. CRITICAL FIX: Refactored the entire script to correctly initialize
- * jQuery variables and bind events *after* the Offcanvas is shown
- * ('shown.bs.offcanvas'). This resolves the "blank preview" bug caused
- * by variables being defined before the DOM elements were ready.
- * 2. Kept V6.2.4 recursive rendering and NaN fixes.
+ * 1. Added bilingual mock data for item loop (item_name_zh/es, variant_name_zh/es)
+ * 2. Kept V6.2.8 Drag-n-Drop fix.
  */
 $(document).ready(function() {
     // --- Global Elements (Outside Offcanvas) ---
@@ -25,7 +22,7 @@ $(document).ready(function() {
     let mainSortable = null;
     let loopSortables = [];
     
-    // --- Mock Data (Unchanged) ---
+    // --- Mock Data (Bilingual Item Loop Added) ---
     const mockData = {
         "{store_name}": "TopTea 演示门店",
         "{store_address}": "Calle Ficticia 123, 28080 Madrid",
@@ -41,13 +38,21 @@ $(document).ready(function() {
         "{vat_amount}": "0.82 €",
         "{payment_methods}": "现金 (Cash): 10.00 €",
         "{change}": "1.00 €",
+        
+        // --- START BILINGUAL ITEM FIX ---
         // Loop variables
-        "{item_name}": "烤布蕾黑糖啵啵奶茶",
-        "{item_variant}": "大杯",
+        "{item_name}": "烤布蕾黑糖啵啵奶茶", // Legacy/Default (ZH)
+        "{item_variant}": "大杯", // Legacy/Default (ZH)
+        "{item_name_zh}": "烤布蕾黑糖啵啵奶茶",
+        "{item_name_es}": "Té con Leche Boba Brown Sugar y Brûlée",
+        "{item_variant_zh}": "大杯",
+        "{item_variant_es}": "Grande",
         "{item_qty}": "1",
         "{item_unit_price}": "5.50",
         "{item_total_price}": "5.50",
         "{item_customizations}": "少冰/七分糖",
+        // --- END BILINGUAL ITEM FIX ---
+
         // EOD variables
         "{report_date}": new Date().toLocaleDateString('sv-SE'),
         "{user_name}": "Gemini Admin",
@@ -141,7 +146,9 @@ $(document).ready(function() {
         }
 
         mainSortable = new Sortable(canvas[0], {
-            group: 'main',
+            // *** START V6.2.8 FIX ***
+            group: 'shared-print-group', // Was 'main'
+            // *** END V6.2.8 FIX ***
             animation: 150,
             handle: '.drag-handle',
             ghostClass: 'sortable-ghost',
@@ -156,7 +163,9 @@ $(document).ready(function() {
     // 2. Initialize a nested (loop) sortable instance
     function initializeLoopSortable(element) {
         const loopSortable = new Sortable(element, {
-            group: 'loop-items', // Note: This group name must match the items being dragged
+            // *** START V6.2.8 FIX ***
+            group: 'shared-print-group', // Was 'loop-items'
+            // *** END V6.2.8 FIX ***
             animation: 150,
             handle: '.drag-handle',
             ghostClass: 'sortable-ghost',
@@ -387,6 +396,12 @@ $(document).ready(function() {
                                         .replace(new RegExp(RegExp.escape(mockData["{item_name}"]), 'g'), "芝芝芒芒")
                                         .replace(new RegExp(RegExp.escape(mockData["{item_customizations}"]), 'g'), "标准冰/三分糖")
                                         .replace(new RegExp(RegExp.escape(mockData["{item_total_price}"]), 'g'), "6.00")
+                                        // --- START BILINGUAL ITEM FIX ---
+                                        .replace(new RegExp(RegExp.escape(mockData["{item_name_zh}"]), 'g'), "芝芝芒芒")
+                                        .replace(new RegExp(RegExp.escape(mockData["{item_name_es}"]), 'g'), "Mango Smoothie con Queso")
+                                        .replace(new RegExp(RegExp.escape(mockData["{item_variant_zh}"]), 'g'), "中杯")
+                                        .replace(new RegExp(RegExp.escape(mockData["{item_variant_es}"]), 'g'), "Mediano")
+                                        // --- END BILINGUAL ITEM FIX ---
                                 );
                                 }
                                 // This recursive call now correctly appends the *returned* HTML
