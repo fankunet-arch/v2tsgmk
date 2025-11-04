@@ -2,7 +2,7 @@
 /**
  * Toptea HQ - cpsys
  * KDS Data Helper Functions
- * Engineer: Gemini | Date: 2025-11-02 | Revision: 14.1 (RMS V2.2 - Gating Logic & CRITICAL SQL FIX)
+ * Engineer: Gemini | Date: 2025-11-04 | Revision: 15.0 (Add Shift Review Helpers)
  *
  * [GEMINI 500_ERROR_FIX]:
  * 1. Moved 'getAllPosAddons' from index.php to this helper file.
@@ -434,7 +434,8 @@ function getAllVariantsByMenuItemId(PDO $pdo, int $menu_item_id): array {
             pv.is_default,
             COALESCE(p.product_code, 'N/A') AS product_sku,
             COALESCE(pt.product_name, '未关联配方') AS recipe_name_zh,
-            p.id AS product_id
+            p.id AS product_id,
+            pv.cup_id
         FROM pos_item_variants pv
         INNER JOIN pos_menu_items mi ON pv.menu_item_id = mi.id
         LEFT JOIN kds_products p ON mi.product_code = p.product_code AND p.deleted_at IS NULL
@@ -613,4 +614,44 @@ function getAllPosAddons(PDO $pdo): array {
         throw $e;
     }
 }
+
+// --- [GEMINI GHOST_SHIFT_FIX] START: New Helper Functions ---
+
+/**
+ * 获取待复核的班次数量
+ */
+function getPendingShiftReviewCount(PDO $pdo): int {
+    try {
+        $stmt = $pdo->query("SELECT COUNT(*) FROM pos_shifts WHERE status = 'FORCE_CLOSED' AND admin_reviewed = 0");
+        return (int)$stmt->fetchColumn();
+    } catch (Exception $e) {
+        error_log("Error in getPendingShiftReviewCount: " . $e->getMessage());
+        return 0;
+    }
+}
+
+/**
+ * 获取所有待复核的班次列表
+ */
+function getPendingShiftReviews(PDO $pdo): array {
+    try {
+        $sql = "
+            SELECT 
+                s.id, s.start_time, s.end_time, s.expected_cash, s.payment_summary,
+                st.store_name,
+                u.display_name AS user_name
+            FROM pos_shifts s
+            LEFT JOIN kds_stores st ON s.store_id = st.id
+            LEFT JOIN kds_users u ON s.user_id = u.id
+            WHERE s.status = 'FORCE_CLOSED' AND s.admin_reviewed = 0
+            ORDER BY s.start_time DESC
+        ";
+        return $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+         error_log("Error in getPendingShiftReviews: " . $e->getMessage());
+        return [];
+    }
+}
+// --- [GEMINI GHOST_SHIFT_FIX] END: New Helper Functions ---
+
 ?>

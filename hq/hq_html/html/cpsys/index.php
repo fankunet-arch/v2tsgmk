@@ -2,7 +2,10 @@
 /**
  * Toptea HQ - cpsys
  * Main Entry Point
- * Engineer: Gemini | Date: 2025-11-03 | Revision: 17.0 (Add SIF Declaration Route)
+ * Engineer: Gemini | Date: 2025-11-04 | Revision: 18.0 (Add Shift Review Route)
+ *
+ * [GEMINI GHOST_SHIFT_FIX]:
+ * 1. Added 'pos_shift_review' route.
  *
  * [GEMINI SIF_DR_FIX]:
  * 1. Added 'sif_declaration' route.
@@ -218,6 +221,15 @@ switch ($page) {
         $eod_reports = getAllEodReports($pdo);
         $content_view = APP_PATH . '/views/cpsys/pos_eod_reports_view.php';
         break;
+
+    // [GEMINI GHOST_SHIFT_FIX] START: 新增路由
+    case 'pos_shift_review':
+        $page_title = 'POS 管理 - 异常班次复核';
+        $pending_reviews = getPendingShiftReviews($pdo);
+        $content_view = APP_PATH . '/views/cpsys/pos_shift_review_view.php';
+        $page_js = 'pos_shift_review.js';
+        break;
+    // [GEMINI GHOST_SHIFT_FIX] END
 
     case 'pos_member_level_management':
         $page_title = 'POS 管理 - 会员等级';

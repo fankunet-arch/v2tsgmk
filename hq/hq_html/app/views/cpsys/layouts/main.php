@@ -2,7 +2,16 @@
 /**
  * Toptea HQ - cpsys
  * Main Layout File
- * Engineer: Gemini | Date: 2025-11-03 | Revision: 17.0 (Add SIF Declaration Link)
+ * Engineer: Gemini | Date: 2025-11-04 | Revision: 18.1 (Fix Sidebar Background Break)
+ *
+ * [GEMINI GHOST_SHIFT_FIX v18.1]:
+ * 1. Changed sidebar class from 'vh-100' to 'min-vh-100' to fix 
+ * background cutoff on long menu scroll.
+ *
+ * [GEMINI GHOST_SHIFT_FIX v18.0]:
+ * 1. Added 'pos_shift_review' to $posPages array.
+ * 2. Added new menu link for '异常班次复核' with notification badge.
+ * 3. Fetched $pending_shift_reviews_count for the badge.
  *
  * [GEMINI SIF_DR_FIX]:
  * 1. Added 'sif_declaration' to $systemPages array.
@@ -11,10 +20,13 @@
 $page_title = $page_title ?? 'TopTea HQ';
 $page = $_GET['page'] ?? 'dashboard';
 
+// [GEMINI GHOST_SHIFT_FIX] Get pending count for badge
+$pending_shift_reviews_count = getPendingShiftReviewCount($pdo);
+
 // Updated page groups for menu highlighting
 $rmsPages = ['rms_product_management', 'rms_global_rules']; // (V2.2) Added global rules
-// [GEMINI ADDON_FIX]
-$posPages = ['pos_menu_management', 'pos_variants_management', 'pos_category_management', 'pos_invoice_list', 'pos_invoice_detail', 'pos_promotion_management', 'pos_eod_reports', 'pos_member_level_management', 'pos_member_management', 'pos_member_settings', 'pos_point_redemption_rules', 'pos_addon_management'];
+// [GEMINI GHOST_SHIFT_FIX] Added 'pos_shift_review'
+$posPages = ['pos_menu_management', 'pos_variants_management', 'pos_category_management', 'pos_invoice_list', 'pos_invoice_detail', 'pos_promotion_management', 'pos_eod_reports', 'pos_member_level_management', 'pos_member_management', 'pos_member_settings', 'pos_point_redemption_rules', 'pos_addon_management', 'pos_shift_review'];
 $dictionaryPages = ['cup_management', 'material_management', 'unit_management', 'ice_option_management', 'sweetness_option_management', 'product_status_management'];
 // [GEMINI SIF_DR_FIX]
 $systemPages = ['user_management', 'store_management', 'kds_user_management', 'pos_print_template_management', 'pos_print_template_variables', 'sif_declaration'];
@@ -33,7 +45,7 @@ $stockPages = ['warehouse_stock_management', 'stock_allocation', 'store_stock_vi
 </head>
 <body>
     <div class="d-flex">
-        <nav class="sidebar vh-100 p-3">
+        <nav class="sidebar min-vh-100 p-3">
             <div class="sidebar-header mb-4"><h4 class="text-white">TopTea HQ</h4></div>
             <ul class="nav flex-column">
                 <li class="nav-item">
@@ -84,6 +96,14 @@ $stockPages = ['warehouse_stock_management', 'stock_allocation', 'store_stock_vi
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_promotion_management') ? 'active' : ''; ?>" href="index.php?page=pos_promotion_management">营销活动管理</a></li>
                                 <li class="nav-item"><a class="nav-link <?php echo (in_array($page, ['pos_invoice_list', 'pos_invoice_detail'])) ? 'active' : ''; ?>" href="index.php?page=pos_invoice_list">票据查询</a></li>
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_eod_reports') ? 'active' : ''; ?>" href="index.php?page=pos_eod_reports">日结报告</a></li>
+                                <li class="nav-item">
+                                    <a class="nav-link d-flex justify-content-between align-items-center <?php echo ($page === 'pos_shift_review') ? 'active' : ''; ?>" href="index.php?page=pos_shift_review">
+                                        异常班次复核
+                                        <?php if ($pending_shift_reviews_count > 0): ?>
+                                            <span class="badge text-bg-danger rounded-pill"><?php echo $pending_shift_reviews_count; ?></span>
+                                        <?php endif; ?>
+                                    </a>
+                                </li>
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_member_level_management') ? 'active' : ''; ?>" href="index.php?page=pos_member_level_management">会员等级管理</a></li>
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_member_management') ? 'active' : ''; ?>" href="index.php?page=pos_member_management">会员列表管理</a></li>
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_member_settings') ? 'active' : ''; ?>" href="index.php?page=pos_member_settings">会员积分设置</a></li>
