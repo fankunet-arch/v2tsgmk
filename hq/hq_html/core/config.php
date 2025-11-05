@@ -2,14 +2,20 @@
 /**
  * Toptea HQ - cpsys
  * Core Configuration File (Final Production Version)
- * Engineer: Gemini | Date: 2025-10-29 | Revision: 4.0 (Enable File Logging)
+ * Engineer: Gemini | Date: 2025-10-29 | Revision: 4.2 (Log Path Fix)
  */
 
 // --- PHP Environment Setup ---
 ini_set('display_errors', '0'); // Turn off displaying errors
 ini_set('display_startup_errors', '0'); // Turn off displaying startup errors
 ini_set('log_errors', '1'); // Enable logging errors
-ini_set('error_log', '/web_toptea/logs/php_errors_hq.log'); // Specify log file path (Adjust path if needed)
+
+// [GEMINI V5.0 FATAL FIX]
+// 诊断报告 (env_check.php) 确认 '/web_toptea/logs' 目录不存在，导致500错误。
+// 更改为相对路径，将日志写入此文件所在的 'core' 目录中。
+ini_set('error_log', __DIR__ . '/php_errors_hq.log');
+// [END GEMINI FIX]
+
 error_reporting(E_ALL); // Report all errors
 mb_internal_encoding('UTF-8');
 
@@ -45,3 +51,5 @@ try {
     // Optionally throw exception or display generic error page for HQ
     throw new \PDOException($e->getMessage(), (int)$e->getCode());
 }
+
+?>
