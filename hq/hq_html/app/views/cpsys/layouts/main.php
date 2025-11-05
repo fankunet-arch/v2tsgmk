@@ -2,13 +2,17 @@
 /**
  * Toptea HQ - cpsys
  * Main Layout File
- * Engineer: Gemini | Date: 2025-11-04 | Revision: 18.1 (Fix Sidebar Background Break)
+ * Engineer: Gemini | Date: 2025-11-05 | Revision: 1.19.006 (Add KDS SOP Rules Menu)
  *
- * [GEMINI GHOST_SHIFT_FIX v18.1]:
+ * [GEMINI KDS_SOP_RULES]:
+ * 1. Added 'kds_sop_rules' to $systemPages array.
+ * 2. Added new menu link for 'KDS SOP 解析规则'.
+ *
+ * [GEMINI GHOST_SHIFT_FIX]:
  * 1. Changed sidebar class from 'vh-100' to 'min-vh-100' to fix 
  * background cutoff on long menu scroll.
  *
- * [GEMINI GHOST_SHIFT_FIX v18.0]:
+ * [GEMINI GHOST_SHIFT_FIX]:
  * 1. Added 'pos_shift_review' to $posPages array.
  * 2. Added new menu link for '异常班次复核' with notification badge.
  * 3. Fetched $pending_shift_reviews_count for the badge.
@@ -28,8 +32,8 @@ $rmsPages = ['rms_product_management', 'rms_global_rules']; // (V2.2) Added glob
 // [GEMINI GHOST_SHIFT_FIX] Added 'pos_shift_review'
 $posPages = ['pos_menu_management', 'pos_variants_management', 'pos_category_management', 'pos_invoice_list', 'pos_invoice_detail', 'pos_promotion_management', 'pos_eod_reports', 'pos_member_level_management', 'pos_member_management', 'pos_member_settings', 'pos_point_redemption_rules', 'pos_addon_management', 'pos_shift_review'];
 $dictionaryPages = ['cup_management', 'material_management', 'unit_management', 'ice_option_management', 'sweetness_option_management', 'product_status_management'];
-// [GEMINI SIF_DR_FIX]
-$systemPages = ['user_management', 'store_management', 'kds_user_management', 'pos_print_template_management', 'pos_print_template_variables', 'sif_declaration'];
+// [GEMINI SIF_DR_FIX] & [GEMINI KDS_SOP_RULES]
+$systemPages = ['user_management', 'store_management', 'kds_user_management', 'pos_print_template_management', 'pos_print_template_variables', 'sif_declaration', 'kds_sop_rules'];
 $stockPages = ['warehouse_stock_management', 'stock_allocation', 'store_stock_view'];
 ?>
 <!DOCTYPE html>
@@ -130,6 +134,7 @@ $stockPages = ['warehouse_stock_management', 'stock_allocation', 'store_stock_vi
                              <ul class="nav flex-column ps-4">
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'user_management') ? 'active' : ''; ?>" href="index.php?page=user_management">用户管理</a></li>
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'store_management' || $page === 'kds_user_management') ? 'active' : ''; ?>" href="index.php?page=store_management">门店管理</a></li>
+                                <li class="nav-item"><a class="nav-link <?php echo ($page === 'kds_sop_rules') ? 'active' : ''; ?>" href="index.php?page=kds_sop_rules">KDS SOP 解析规则</a></li>
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_print_template_management') ? 'active' : ''; ?>" href="index.php?page=pos_print_template_management">打印模板管理</a></li>
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_print_template_variables') ? 'active' : ''; ?>" href="index.php?page=pos_print_template_variables">模板可用变量</a></li>
                                 <li class="nav-item"><a class="nav-link <?php echo ($page === 'sif_declaration') ? 'active' : ''; ?>" href="index.php?page=sif_declaration">合规性声明 (SIF)</a></li>
