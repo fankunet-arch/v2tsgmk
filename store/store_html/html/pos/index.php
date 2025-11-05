@@ -438,6 +438,51 @@ $cache_version = time();
     </div>
   </div>
 </div>
+
+  <div class="modal fade" id="availabilityModal" tabindex="-1" aria-labelledby="availabilityModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content modal-sheet">
+        <div class="modal-header">
+          <h5 class="modal-title" id="availabilityModalLabel">商品估清管理</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted">在此处关闭商品将使其在点餐界面显示为“估清”且不可点。此状态将在每日自动重置。</p>
+          <div class="list-group" id="availability_list_container">
+            <div class="text-center p-4"><div class="spinner-border"></div></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="soldOutDecisionModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content modal-sheet">
+        <div class="modal-header">
+          <h5 class="modal-title">交接班估清确认</h5>
+        </div>
+        <div class="modal-body">
+          <p>上一班次有 <strong id="sold_out_snapshot_count">0</strong> 个商品处于“估清”状态。</p>
+          <p>请选择如何处理这些商品的库存状态：</p>
+        </div>
+        <div class="modal-footer d-flex">
+          <button type="button" class="btn btn-outline-secondary w-100" id="btn_sold_out_decision_keep">
+            <strong>继续估清</strong>
+            <small class="d-block">保持上一班次的状态</small>
+          </button>
+          <button type="button" class="btn btn-primary w-100" id="btn_sold_out_decision_reset">
+            <strong>全部重新上架</strong>
+            <small class="d-block">将所有商品设为可售</small>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 <div class="toast-container position-fixed bottom-0 end-0 p-3"><div id="sys_toast" class="toast" role="alert"><div class="toast-body" id="toast_msg"></div></div></div>
 
 <script type="module" src="./assets/js/main.js?v=<?php echo $cache_version; ?>"></script>

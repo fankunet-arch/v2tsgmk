@@ -404,3 +404,4 @@ try {
     error_log('Shift Handler Error: ' . $e->getMessage() . ' on line ' . $e->getLine());
     send_json('error', 'Internal server error.', ['debug' => $e->getMessage()], 500);
 }
+?>

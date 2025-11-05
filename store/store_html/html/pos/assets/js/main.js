@@ -177,6 +177,7 @@ Object.assign(I18N_NS.es, {
   shift_start_submit: 'Confirmar e Iniciar Turno',
   shift_start_success: '¡Turno iniciado!',
   shift_start_fail: 'Error al iniciar turno',
+  // [GEMINI GHOST_SHIFT_FIX v5.2]
   force_start_title: 'Aviso: Turno anterior no cerrado',
   force_start_body: 'El sistema detectó que el turno (de: {user}) no se cerró correctamente. Debe forzar el cierre de ese turno para iniciar el suyo.',
   force_start_label: 'Su fondo de caja inicial (€)',

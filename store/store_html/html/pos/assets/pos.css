@@ -295,3 +295,32 @@ body.contrast-boost{
     border-radius: 0.5rem;
     border: 1px solid var(--border);
 }
+
+/* [新] 商品估清样式 */
+.product-card.product-card-sold-out {
+  opacity: 0.5;
+  background-color: var(--surface-2);
+  cursor: not-allowed;
+  position: relative; /* 确保徽章定位正确 */
+}
+
+.product-card.product-card-sold-out:hover {
+  transform: none;
+  box-shadow: var(--shadow-sm);
+  border-color: var(--border);
+}
+
+/* [新] 估清面板的开关样式 */
+#availability_list_container .form-check-input {
+  width: 3em;
+  height: 1.5em;
+  margin-top: 0.5em;
+}
+#availability_list_container .form-check {
+  margin-top: 0;
+  padding-left: 4em; /* 为开关腾出空间 */
+}
+#availability_list_container .form-check .form-check-label {
+  padding-top: 0.25em;
+  white-space: nowrap;
+}

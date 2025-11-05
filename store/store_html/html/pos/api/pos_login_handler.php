@@ -49,6 +49,56 @@ try {
             // Update last login timestamp
             $pdo->prepare("UPDATE kds_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?")->execute([$user['id']]);
 
+
+			// --- [估清 需求2] 每日自动重置 ---
+            try {
+                // 1. 获取门店的 EOD 截止时间 (e.g., 3)
+                $stmt_cutoff = $pdo->prepare("SELECT eod_cutoff_hour FROM kds_stores WHERE id = ?");
+                $stmt_cutoff->execute([$store['id']]);
+                $cutoff_hour = (int)($stmt_cutoff->fetchColumn() ?: 3);
+
+                // 2. 计算当前的“营业日”
+                // (如果现在是凌晨2点，cutoff=3，则营业日还是昨天)
+                $tz = new DateTimeZone('Europe/Madrid');
+                $current_business_date = (new DateTime('now', $tz))
+                                         ->modify("-{$cutoff_hour} hours")
+                                         ->format('Y-m-d');
+
+                // 3. 检查 `pos_daily_tracking` 表
+                $stmt_track = $pdo->prepare("SELECT last_daily_reset_business_date FROM pos_daily_tracking WHERE store_id = ?");
+                $stmt_track->execute([$store['id']]);
+                $last_reset_date = $stmt_track->fetchColumn();
+
+                if ($last_reset_date !== $current_business_date) {
+                    // 4. 这是今天第一次登录，执行重置
+                    
+                    // 4a. [需求2] 重置所有估清状态
+                    $pdo->prepare("DELETE FROM pos_product_availability WHERE store_id = ?")
+                        ->execute([$store['id']]);
+                    
+                    // 4b. [需求3] 清除上一日的交接班快照
+                    $sql_update_tracking = "
+                        INSERT INTO pos_daily_tracking (store_id, last_daily_reset_business_date, sold_out_state_snapshot, snapshot_taken_at)
+                        VALUES (?, ?, NULL, NULL)
+                        ON DUPLICATE KEY UPDATE
+                            last_daily_reset_business_date = VALUES(last_daily_reset_business_date),
+                            sold_out_state_snapshot = VALUES(sold_out_state_snapshot),
+                            snapshot_taken_at = VALUES(snapshot_taken_at)
+                    ";
+                    $pdo->prepare($sql_update_tracking)
+                        ->execute([$store['id'], $current_business_date]);
+                }
+
+            } catch (Throwable $e) {
+                // 即使重置失败，也不应阻止登录
+                error_log("CRITICAL: Daily reset for store {$store['id']} failed: " . $e->getMessage());
+            }
+            // --- [估清 需求2] 结束 ---
+
+            // Redirect to POS main page
+            header('Location: ../index.php');
+
+
             // Redirect to POS main page
             header('Location: ../index.php');
             exit;
