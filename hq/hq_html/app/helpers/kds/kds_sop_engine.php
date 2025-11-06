@@ -1,8 +1,7 @@
 <?php
 /**
  * KDS SOP Engine - business rules & code parsing
- * Auto-extracted from kds_helper.php (Phase 1).
- * [GEMINI FIX V2] Restored KdsSopParser class definition.
+ * Revision: 6.0 (Template Parser Refactor)
  */
 
 if (!class_exists('KdsSopParser')) {
@@ -38,91 +37,133 @@ if (!class_exists('KdsSopParser')) {
         }
 
         /**
-         * 解析 "分隔符" 模式 (e.g., P-A-M-T)
+         * V1 解析器: "分隔符" 模式 (e.g., P-A-M-T) (已重命名)
          */
-        private function _parseDelimiter(string $code, array $config): ?array {
+        private function _parseV1Delimiter(string $code, array $config): ?array {
             $format_str = $config['format'] ?? '';     // "P-A-M-T"
             $separator = $config['separator'] ?? '-'; // "-"
             $prefix = $config['prefix'] ?? '';       // "#"
 
-            // 1. 检查前缀
             if (!empty($prefix)) {
-                if (strpos($code, $prefix) !== 0) {
-                    return null; // 前缀不匹配
-                }
-                $code = substr($code, strlen($prefix)); // 移除前缀
+                if (strpos($code, $prefix) !== 0) return null;
+                $code = substr($code, strlen($prefix));
             }
 
-            // 2. 拆分
-            $format_parts = explode('-', $format_str); // [ 'P', 'A', 'M', 'T' ]
-            $code_parts = explode($separator, $code);   // [ '101', '1', '1', '11' ]
+            $format_parts = explode('-', $format_str);
+            $code_parts = explode($separator, $code);
 
-            // 3. 验证长度
-            if (count($format_parts) !== count($code_parts)) {
-                return null; // 长度不匹配
-            }
+            if (count($format_parts) !== count($code_parts)) return null;
 
-            // 4. 映射
-            $result = ['p' => '', 'a' => null, 'm' => null, 't' => null];
+            $result = ['p' => '', 'a' => null, 'm' => null, 't' => null, 'ord' => null];
             foreach ($format_parts as $index => $part_key) {
-                $part_key_lower = strtolower($part_key); // 'p', 'a', 'm', 't'
+                $part_key_lower = strtolower($part_key);
                 $value = $code_parts[$index] ?? null;
                 
                 if (array_key_exists($part_key_lower, $result)) {
-                    // 只在值非空时才覆盖 null
                     if ($value !== null && $value !== '') {
                         $result[$part_key_lower] = $value;
                     }
                 }
             }
             
-            // P (产品) 必须存在
             return (!empty($result['p'])) ? $result : null;
         }
 
         /**
-         * 解析 "键值对" 模式 (e.g., ?o=101&c=1)
+         * V1 解析器: "键值对" 模式 (e.g., ?o=101&c=1) (已重命名)
          */
-        private function _parseKeyValue(string $code, array $config): ?array {
-            // 1. 解析 URL 查询字符串
-            // (移除 ? # / 等)
+        private function _parseV1KeyValue(string $code, array $config): ?array {
             $code = ltrim($code, '?#/');
-            parse_str($code, $query_params); // 自动处理 &
-            
-            if (empty($query_params)) {
-                return null; // 不是有效的键值对
-            }
+            parse_str($code, $query_params);
+            if (empty($query_params)) return null;
 
-            // 2. 映射
-            $result = ['p' => '', 'a' => null, 'm' => null, 't' => null];
-            $p_key = $config['P_key'] ?? 'p'; // P 键 (必填)
-            $a_key = $config['A_key'] ?? '';  // A 键 (可选)
-            $m_key = $config['M_key'] ?? '';  // M 键 (可选)
-            $t_key = $config['T_key'] ?? '';  // T 键 (可选)
+            $result = ['p' => '', 'a' => null, 'm' => null, 't' => null, 'ord' => null];
+            $p_key = $config['P_key'] ?? 'p';
+            $a_key = $config['A_key'] ?? '';
+            $m_key = $config['M_key'] ?? '';
+            $t_key = $config['T_key'] ?? '';
 
-            if (empty($query_params[$p_key])) {
-                return null; // 必须包含 P 键
-            }
+            if (empty($query_params[$p_key])) return null;
             
             $result['p'] = $query_params[$p_key] ?? '';
+            if (!empty($a_key) && !empty($query_params[$a_key])) $result['a'] = $query_params[$a_key];
+            if (!empty($m_key) && !empty($query_params[$m_key])) $result['m'] = $query_params[$m_key];
+            if (!empty($t_key) && !empty($query_params[$t_key])) $result['t'] = $query_params[$t_key];
             
-            if (!empty($a_key) && !empty($query_params[$a_key])) {
-                $result['a'] = $query_params[$a_key];
-            }
-            if (!empty($m_key) && !empty($query_params[$m_key])) {
-                $result['m'] = $query_params[$m_key];
-            }
-            if (!empty($t_key) && !empty($query_params[$t_key])) {
-                $result['t'] = $query_params[$t_key];
-            }
-
             return $result;
         }
 
         /**
-         * 公共方法：解析查询码
+         * [NEW] V2 解析器: "模板" 模式 (e.g., {ORD}|{P}-{A})
+         */
+        private function _parseTemplateV2(string $code, array $config): ?array {
+            $template = $config['template'] ?? ''; // e.g., "?p={P}&c={A}"
+            $mapping = $config['mapping'] ?? [];   // e.g., [ "p" => "P", "a" => "A" ]
+            
+            if (empty($template) || empty($mapping)) return null;
+
+            // 1. 反转映射，从占位符 {P} 映射到标准键 'p'
+            // [ "P" => "p", "A" => "a", ... ]
+            $placeholder_to_key_map = [];
+            foreach ($mapping as $key => $placeholder) {
+                if (!empty($placeholder)) {
+                    $placeholder_to_key_map[$placeholder] = $key;
+                }
+            }
+            
+            // 2. 将模板字符串转换为正则表达式
+            $regex = '~^';
+            $parts = preg_split('/(\{[a-zA-Z0-9_]+\})/', $template, -1, PREG_SPLIT_DELIM_CAPTURE);
+            $found_placeholders = [];
+            
+            foreach ($parts as $part) {
+                if (preg_match('/^\{([a-zA-Z0-9_]+)\}$/', $part, $matches)) {
+                    // 这是一个占位符: {P}
+                    $placeholder = $matches[1]; // "P"
+                    if (isset($placeholder_to_key_map[$placeholder])) {
+                        // 使用 "命名捕获组" (?P<name>...)
+                        $regex .= '(?P<' . $placeholder . '>.+?)';
+                        $found_placeholders[] = $placeholder;
+                    } else {
+                        // 模板中的 {XXX} 在 mapping 中未定义, 视为静态文本
+                        $regex .= preg_quote($part);
+                    }
+                } else {
+                    // 这是一个静态分隔符: "?p="
+                    $regex .= preg_quote($part);
+                }
+            }
+            $regex .= '$~u'; // 结尾, u=utf8
+
+            // 3. 执行匹配
+            if (!preg_match($regex, $code, $matches)) {
+                return null; // 不匹配
+            }
+
+            // 4. 映射结果
+            $result = ['p' => '', 'a' => null, 'm' => null, 't' => null, 'ord' => null];
+            $p_found = false;
+
+            foreach ($found_placeholders as $placeholder) { // e.g., "P", "A"
+                $value = $matches[$placeholder] ?? null;
+                $key = $placeholder_to_key_map[$placeholder]; // e.g., "p", "a"
+                
+                if ($key === 'p' && !empty($value)) {
+                    $result['p'] = $value;
+                    $p_found = true;
+                } elseif (array_key_exists($key, $result) && !empty($value)) {
+                    $result[$key] = $value;
+                }
+            }
+
+            // P (产品) 必须存在
+            return $p_found ? $result : null;
+        }
+
+        /**
+         * 公共方法：解析查询码 (V2 重构)
          * @param string $raw_code 原始查询码 (来自 KDS JS 或扫码枪)
-         * @return array|null 成功则返回 ['p'=>'101', 'a'=>'1', 'm'=>'2', 't'=>'11']，失败则 null
+         * @return array|null 成功则返回 ['p'=>'101', 'a'=>'1', ...]，失败则 null
          */
         public function parse(string $raw_code): ?array {
             $this->loadRules();
@@ -136,18 +177,23 @@ if (!class_exists('KdsSopParser')) {
                 try {
                     $config = json_decode($rule['config_json'], true);
                     if (json_last_error() !== JSON_ERROR_NONE) {
-                        // 跳过损坏的规则
                         error_log("KDS SOP Parser: Skipping rule ID {$rule['id']} due to invalid JSON.");
                         continue; 
                     }
 
                     $result = null;
                     
-                    if ($rule['extractor_type'] === 'DELIMITER') {
-                        $result = $this->_parseDelimiter($raw_code, $config);
+                    // [V2] 优先使用新模板解析器
+                    if (isset($config['template'])) {
+                        $result = $this->_parseTemplateV2($raw_code, $config);
                     } 
+                    // [V1] 兼容旧的 DELIMITER 规则
+                    elseif ($rule['extractor_type'] === 'DELIMITER') {
+                        $result = $this->_parseV1Delimiter($raw_code, $config);
+                    } 
+                    // [V1] 兼容旧的 KEY_VALUE 规则
                     elseif ($rule['extractor_type'] === 'KEY_VALUE') {
-                        $result = $this->_parseKeyValue($raw_code, $config);
+                        $result = $this->_parseV1KeyValue($raw_code, $config);
                     }
                     
                     // 如果此规则成功匹配

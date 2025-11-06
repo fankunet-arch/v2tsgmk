@@ -1,6 +1,7 @@
 /**
  * Toptea HQ - JavaScript for KDS SOP Rule Management
- * Engineer: Gemini | Date: 2025-11-05
+ * Engineer: Gemini | Date: 2025-11-06
+ * Revision: 6.0 (Template Parser Refactor)
  */
 $(document).ready(function() {
     
@@ -13,23 +14,36 @@ $(document).ready(function() {
     const tableBody = $('#rules-table-body');
     
     const ruleIdInput = $('#rule-id');
-    const extractorTypeSelect = $('#extractor_type');
-    const configDelimiterDiv = $('#config-delimiter');
-    const configKeyValueDiv = $('#config-key-value');
+    
+    // V2 模板字段
+    const configTemplateString = $('#config_template_string');
+    const mapPKey = $('#map_p_key');
+    const mapAKey = $('#map_a_key');
+    const mapMKey = $('#map_m_key');
+    const mapTKey = $('#map_t_key');
+    const mapOrdKey = $('#map_ord_key');
+    
+    // V1 (旧) 字段 (在V2视图中已不存在，仅用于JS转换)
+    // const extractorTypeSelect = $('#extractor_type');
+    // const configDelimiterDiv = $('#config-delimiter');
+    // const configKeyValueDiv = $('#config-key-value');
+
 
     /**
-     * [NEW] 更新 URL 示例 (Request 2)
+     * [V2] 更新占位符定义区域的实时示例
      */
-    function updateUrlExample() {
-        const pKey = $('#config_p_key').val().trim();
-        const aKey = $('#config_a_key').val().trim();
-        const mKey = $('#config_m_key').val().trim();
-        const tKey = $('#config_t_key').val().trim();
+    function updateLivePlaceholders() {
+        const p = mapPKey.val() || 'P';
+        const a = mapAKey.val() || 'A';
+        const m = mapMKey.val() || 'M';
+        const t = mapTKey.val() || 'T';
+        const ord = mapOrdKey.val() || 'ORD';
 
-        $('#live-example-p').text(pKey ? `${pKey}=101` : '');
-        $('#live-example-a').text(aKey ? `&${aKey}=1` : '');
-        $('#live-example-m').text(mKey ? `&${mKey}=2` : '');
-        $('#live-example-t').text(tKey ? `&${tKey}=3` : '');
+        $('#live-example-p').text(`{${p}}`);
+        $('#live-example-a').text(`{${a}}`);
+        $('#live-example-m').text(`{${m}}`);
+        $('#live-example-t').text(`{${t}}`);
+        $('#live-example-ord').text(`{${ord}}`);
     }
 
     /**
@@ -60,7 +74,7 @@ $(document).ready(function() {
     }
 
     /**
-     * 渲染规则表格
+     * 渲染规则表格 (V2)
      */
     function renderRulesTable(rules) {
         tableBody.empty();
@@ -78,6 +92,25 @@ $(document).ready(function() {
                 ? `<span class="badge text-bg-success">已启用</span>`
                 : `<span class="badge text-bg-secondary">已禁用</span>`;
             
+            // [V2] 显示模板字符串
+            let templateDisplay = '';
+            try {
+                const config = JSON.parse(rule.config_json || '{}');
+                // 优先显示 V2 模板
+                if (config.template) {
+                    templateDisplay = `<code>${escapeHTML(config.template)}</code>`;
+                } 
+                // 否则回退显示 V1 (旧) 格式
+                else if (config.format) {
+                    templateDisplay = `<code class="text-muted" title="V1旧格式">${escapeHTML(config.format)} (${escapeHTML(config.separator)})</code>`;
+                } else if (config.P_key) {
+                    templateDisplay = `<code class="text-muted" title="V1旧格式">P=${escapeHTML(config.P_key)}</code>`;
+                }
+            } catch (e) {
+                templateDisplay = '<span class="text-danger">JSON无效</span>';
+            }
+
+
             const rowHtml = `
                 <tr ${rule.id === 1 ? 'class="table-internal-rule"' : ''}>
                     <td>${storeName}</td>
@@ -86,7 +119,7 @@ $(document).ready(function() {
                         ${rule.id === 1 ? '<br><small class="text-muted">(KDS 内部 JS 依赖此规则)</small>' : ''}
                     </td>
                     <td><span class="badge text-bg-secondary">${rule.priority}</span></td>
-                    <td><span class="badge text-bg-primary">${rule.extractor_type}</span></td>
+                    <td>${templateDisplay}</td>
                     <td>${status}</td>
                     <td class="text-end">
                         <button class="btn btn-sm btn-outline-primary edit-btn" data-id="${rule.id}" data-bs-toggle="offcanvas" data-bs-target="#rule-drawer">编辑</button>
@@ -99,22 +132,7 @@ $(document).ready(function() {
     }
 
     /**
-     * 切换配置区域的可见性
-     */
-    function toggleConfigSections() {
-        const type = extractorTypeSelect.val();
-        configDelimiterDiv.hide();
-        configKeyValueDiv.hide();
-        if (type === 'DELIMITER') {
-            configDelimiterDiv.show();
-        } else if (type === 'KEY_VALUE') {
-            configKeyValueDiv.show();
-        }
-    }
-    extractorTypeSelect.on('change', toggleConfigSections);
-
-    /**
-     * 重置表单
+     * 重置表单 (V2)
      */
     function resetForm() {
         form[0].reset();
@@ -122,20 +140,26 @@ $(document).ready(function() {
         drawerLabel.text('创建新解析规则');
         $('#is_active').prop('checked', true);
         $('#priority').val('100');
-        extractorTypeSelect.val('DELIMITER'); // 默认选中
-        toggleConfigSections();
-        updateUrlExample(); // [NEW] Call to clear/update preview
+        
+        // 恢复默认映射
+        mapPKey.val('P');
+        mapAKey.val('A');
+        mapMKey.val('M');
+        mapTKey.val('T');
+        mapOrdKey.val('ORD');
+        
+        updateLivePlaceholders();
     }
 
     // --- 事件绑定 ---
 
-    // --- [NEW] Event binding for Live URL Example (Request 2) ---
-    form.on('input', '#config_p_key, #config_a_key, #config_m_key, #config_t_key', updateUrlExample);
+    // V2: 实时更新占位符示例
+    form.on('input', '#map_p_key, #map_a_key, #map_m_key, #map_t_key, #map_ord_key', updateLivePlaceholders);
 
     // 创建
     $('#create-rule-btn').on('click', resetForm);
 
-    // 编辑
+    // 编辑 (V2)
     tableBody.on('click', '.edit-btn', function() {
         resetForm();
         const ruleId = $(this).data('id');
@@ -153,26 +177,27 @@ $(document).ready(function() {
             dataType: 'json',
             success: function(response) {
                 if (response.status === 'success') {
-                    const rule = response.data;
+                    const rule = response.data; // rule.config 已经是 V2 格式 (由 handle_kds_rule_get 转换)
+                    
                     $('#rule_name').val(rule.rule_name);
                     $('#store_id').val(rule.store_id || '');
                     $('#priority').val(rule.priority);
                     $('#is_active').prop('checked', rule.is_active == 1);
-                    extractorTypeSelect.val(rule.extractor_type);
-
-                    // 填充配置
-                    if (rule.extractor_type === 'DELIMITER' && rule.config) {
-                        $('#config_format').val(rule.config.format);
-                        $('#config_separator').val(rule.config.separator);
-                        $('#config_prefix').val(rule.config.prefix);
-                    } else if (rule.extractor_type === 'KEY_VALUE' && rule.config) {
-                        $('#config_p_key').val(rule.config.P_key);
-                        $('#config_a_key').val(rule.config.A_key);
-                        $('#config_m_key').val(rule.config.M_key);
-                        $('#config_t_key').val(rule.config.T_key);
+                    
+                    // 填充 V2 配置
+                    if (rule.config && rule.config.template) {
+                        configTemplateString.val(rule.config.template);
                     }
-                    toggleConfigSections(); // 显示正确的DIV
-                    updateUrlExample(); // [NEW] Call to update preview
+                    if (rule.config && rule.config.mapping) {
+                        const m = rule.config.mapping;
+                        mapPKey.val(m.p || 'P');
+                        mapAKey.val(m.a || 'A');
+                        mapMKey.val(m.m || 'M');
+                        mapTKey.val(m.t || 'T');
+                        mapOrdKey.val(m.ord || 'ORD');
+                    }
+                    
+                    updateLivePlaceholders();
                 } else {
                     alert('获取规则失败: ' + response.message);
                     dataDrawer.hide();
@@ -185,35 +210,50 @@ $(document).ready(function() {
         });
     });
 
-    // 保存 (创建或更新)
+    // 保存 (V2)
     form.on('submit', function(e) {
         e.preventDefault();
         
+        // V2 打包
+        const mapping = {
+            p: mapPKey.val() || null,
+            a: mapAKey.val() || null,
+            m: mapMKey.val() || null,
+            t: mapTKey.val() || null,
+            ord: mapOrdKey.val() || null
+        };
+        // 清理掉空的映射
+        Object.keys(mapping).forEach(key => {
+            if (mapping[key] === null) delete mapping[key];
+        });
+
+        const v2_config = {
+            template: configTemplateString.val(),
+            mapping: mapping
+        };
+
         const formData = {
             id: ruleIdInput.val(),
             rule_name: $('#rule_name').val(),
             store_id: $('#store_id').val(),
             priority: $('#priority').val(),
             is_active: $('#is_active').is(':checked') ? 1 : 0,
-            extractor_type: extractorTypeSelect.val(),
             
-            // Delimiter config
-            config_format: $('#config_format').val(),
-            config_separator: $('#config_separator').val(),
-            config_prefix: $('#config_prefix').val(),
-
-            // Key-Value config
-            config_p_key: $('#config_p_key').val(),
-            config_a_key: $('#config_a_key').val(),
-            config_m_key: $('#config_m_key').val(),
-            config_t_key: $('#config_t_key').val()
+            // V2 核心数据
+            config_json: JSON.stringify(v2_config),
+            // V1 兼容字段 (虽然不用了，但还是传递，API端会忽略它)
+            extractor_type: $('#extractor_type').val() 
         };
 
         $.ajax({
             url: API_GATEWAY_URL,
             type: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({ data: formData }),
+            // 注意：V2 的 save handler (handle_kds_rule_save)
+            // 现在期望的 data 结构是 {id: ..., config_json: "..."}
+            // 而不是 {data: { id: ..., config_... }}
+            // 我们将直接发送 formData 对象
+            data: JSON.stringify(formData), 
             dataType: 'json',
             beforeSend: function (xhr, settings) {
                 settings.url += `?res=${API_RES}&act=save`;
@@ -234,7 +274,7 @@ $(document).ready(function() {
         });
     });
 
-    // 删除
+    // 删除 (无变化)
     tableBody.on('click', '.delete-btn', function() {
         const ruleId = $(this).data('id');
         const ruleName = $(this).data('name');

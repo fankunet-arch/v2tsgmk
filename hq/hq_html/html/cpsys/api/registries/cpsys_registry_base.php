@@ -2,6 +2,8 @@
 /**
  * Toptea HQ - CPSYS API 注册表 (Base System)
  * 注册核心系统资源 (用户, 门店, 字典, 打印模板等)
+ *
+ * Revision: 6.0 (KDS SOP Rule Template Parser Refactor)
  */
 
 // 确保助手已加载 (网关会处理，但作为保险)
@@ -52,14 +54,90 @@ if (!function_exists('getNextAvailableCustomCode')) {
 /* ===== end fallback ===== */
 
 /**
+ * [V2] 助手: 将 V1 规则配置转为 V2 (用于前端编辑)
+ */
+function convert_v1_config_to_v2_for_editing(array $data): array {
+    $config_json = $data['config_json'] ?? '{}';
+    $config = json_decode($config_json, true);
+    if (json_last_error() !== JSON_ERROR_NONE) $config = [];
+
+    // 已经是 V2 (或无法识别)，直接返回
+    if (isset($config['template']) || empty($config)) {
+         $data['config'] = $config; // JS 读取 .config
+         unset($data['config_json']);
+         return $data;
+    }
+
+    $v2_config = [
+        'template' => '',
+        'mapping' => [ 'p' => 'P', 'a' => 'A', 'm' => 'M', 't' => 'T', 'ord' => 'ORD' ] // 默认映射
+    ];
+
+    if ($data['extractor_type'] === 'DELIMITER') {
+        $format = $config['format'] ?? 'P-A-M-T';
+        $separator = $config['separator'] ?? '-';
+        $prefix = $config['prefix'] ?? '';
+        
+        $template_string = str_replace(
+            ['P', 'A', 'M', 'T'],
+            ['{P}', '{A}', '{M}', '{T}'],
+            $format
+        );
+        $v2_config['template'] = $prefix . $template_string;
+        // Delimiter 模式使用 V2 默认映射即可
+        
+    } elseif ($data['extractor_type'] === 'KEY_VALUE') {
+        // V1 的 KeyValue 格式: { "P_key": "p", "A_key": "c", ... }
+        // V2 的 模板格式: { "template": "?p={P}&c={A}", "mapping": { "p": "P", "a": "A" } }
+        
+        $p_key = $config['P_key'] ?? 'p'; // V1 key
+        $a_key = $config['A_key'] ?? '';
+        $m_key = $config['M_key'] ?? '';
+        $t_key = $config['T_key'] ?? '';
+        
+        // V2 占位符 (P/A/M/T)
+        $p_placeholder = 'P';
+        $a_placeholder = 'A';
+        $m_placeholder = 'M';
+        $t_placeholder = 'T';
+
+        $template_parts = [];
+        $v2_mapping = [];
+        
+        if ($p_key) {
+            $template_parts[] = "{$p_key}={{{$p_placeholder}}}";
+            $v2_mapping['p'] = $p_placeholder;
+        }
+        if ($a_key) {
+            $template_parts[] = "{$a_key}={{{$a_placeholder}}}";
+            $v2_mapping['a'] = $a_placeholder;
+        }
+        if ($m_key) {
+            $template_parts[] = "{$m_key}={{{$m_placeholder}}}";
+            $v2_mapping['m'] = $m_placeholder;
+        }
+        if ($t_key) {
+            $template_parts[] = "{$t_key}={{{$t_placeholder}}}";
+            $v2_mapping['t'] = $t_placeholder;
+        }
+
+        $v2_config['template'] = '?' . implode('&', $template_parts);
+        $v2_config['mapping'] = $v2_mapping;
+    }
+    
+    $data['config'] = $v2_config;
+    unset($data['config_json']);
+    return $data;
+}
+
+/**
  * 处理器: KDS SOP 解析规则 (kds_sop_query_rules)
- * (这是您文件中唯一存在的部分，予以保留)
  */
 function handle_kds_rule_get_list(PDO $pdo, array $config, array $input_data): void {
     // 按门店优先、优先级排序
     $sql = "
         SELECT
-            r.*,
+            r.id, r.store_id, r.rule_name, r.priority, r.is_active, r.config_json,
             s.store_name
         FROM kds_sop_query_rules r
         LEFT JOIN kds_stores s ON r.store_id = s.id
@@ -78,9 +156,8 @@ function handle_kds_rule_get(PDO $pdo, array $config, array $input_data): void {
     $stmt->execute([(int)$id]);
     $data = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($data) {
-        // 解码 JSON 以便前端表单填充
-        $data['config'] = json_decode($data['config_json'], true);
-        unset($data['config_json']); // 移除原始 json
+        // [V2] 自动转换 V1/V2 格式
+        $data = convert_v1_config_to_v2_for_editing($data);
         json_ok($data);
     } else {
         json_error('未找到规则', 404);
@@ -88,7 +165,9 @@ function handle_kds_rule_get(PDO $pdo, array $config, array $input_data): void {
 }
 
 function handle_kds_rule_save(PDO $pdo, array $config, array $input_data): void {
-    $data = $input_data['data'] ?? json_error('缺少 data', 400);
+    // V2: JS 直接提交了所有字段，不再需要 'data' 包装器
+    $data = $input_data;
+    
     $id = $data['id'] ? (int)$data['id'] : null;
 
     // 1. 基础字段
@@ -96,49 +175,36 @@ function handle_kds_rule_save(PDO $pdo, array $config, array $input_data): void 
     $priority = (int)($data['priority'] ?? 100);
     $is_active = (int)($data['is_active'] ?? 0);
     $store_id = !empty($data['store_id']) ? (int)$data['store_id'] : null; // 0 或 '' 视为 NULL
-    $extractor_type = $data['extractor_type'] ?? '';
 
-    if (empty($rule_name) || empty($extractor_type)) {
-        json_error('规则名称 和 解析器类型 不能为空。', 400);
+    if (empty($rule_name)) {
+        json_error('规则名称不能为空。', 400);
     }
 
-    // 2. 根据类型构建 config_json
-    $config_json = [];
-    if ($extractor_type === 'DELIMITER') {
-        $format = $data['config_format'] ?? '';
-        $separator = $data['config_separator'] ?? '';
-        if (empty($format) || $separator === '') { // 分隔符可以是 ' ' (空格)，但不该是 ''
-             json_error('分隔符模式下，组件顺序和分隔符不能为空。', 400);
-        }
-        if (mb_strlen($separator) > 1) {
-             json_error('分隔符只能是单个字符。', 400);
-        }
-        $config_json = [
-            'format' => $format,
-            'separator' => $separator,
-            'prefix' => trim($data['config_prefix'] ?? '')
-        ];
-    } elseif ($extractor_type === 'KEY_VALUE') {
-        $p_key = trim($data['config_p_key'] ?? '');
-        if (empty($p_key)) json_error('URL参数模式下，P (产品) 的键 不能为空。', 400);
-        $config_json = [
-            'P_key' => $p_key,
-            'A_key' => trim($data['config_a_key'] ?? ''),
-            'M_key' => trim($data['config_m_key'] ?? ''),
-            'T_key' => trim($data['config_t_key'] ?? '')
-        ];
-    } else {
-        json_error('无效的解析器类型。', 400);
+    // 2. V2 模板配置
+    // V2 JS 提交的是 config_json (字符串) 和 extractor_type (TEMPLATE_V2)
+    $config_json_string = $data['config_json'] ?? null;
+    $extractor_type = $data['extractor_type'] ?? 'TEMPLATE_V2'; // 默认为 V2
+    
+    // 校验 V2 JSON
+    if (empty($config_json_string)) {
+        json_error('配置 JSON 不能为空。', 400);
     }
-
+    $config_decoded = json_decode($config_json_string, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+         json_error('配置 JSON 格式无效。', 400);
+    }
+    if (empty($config_decoded['template']) || empty($config_decoded['mapping'])) {
+         json_error('V2 配置必须包含 "template" 和 "mapping"。', 400);
+    }
+    
     // 3. 准备 SQL 参数
     $params = [
         ':store_id' => $store_id,
         ':rule_name' => $rule_name,
         ':priority' => $priority,
         ':is_active' => $is_active,
-        ':extractor_type' => $extractor_type,
-        ':config_json' => json_encode($config_json, JSON_UNESCAPED_UNICODE)
+        ':extractor_type' => $extractor_type, // 存储 "TEMPLATE_V2"
+        ':config_json' => $config_json_string // 存储 V2 JSON 字符串
     ];
 
     if ($id) {
@@ -756,7 +822,7 @@ function handle_status_delete(PDO $pdo, array $config, array $input_data): void 
 // --- 注册表 ---
 return [
 
-    // KDS SOP Rules (原文件中唯一存在)
+    // KDS SOP Rules (V2 Refactor)
     'kds_sop_rules' => [
         'table' => 'kds_sop_query_rules', 'pk' => 'id', 'soft_delete_col' => null, 'auth_role' => ROLE_SUPER_ADMIN,
         'custom_actions' => [
@@ -841,4 +907,3 @@ return [
     // --- END: 缺失的注册条目 ---
 
 ];
-
