@@ -6,7 +6,9 @@
  *
  * [GEMINI KDS Image URL FIX]:
  * 1. card 增加 imgUrl 参数，并渲染 <img> 标签。
- * 2. render 在调用 card 时传递 r.image_url。
+ *
+ * [GEMINI SECURE IMAGE PROXY FIX (V1.1)]:
+ * 1. imgTag src now points to 'api/get_image.php' proxy script.
  */
 
 /**
@@ -86,10 +88,12 @@ window.onScanError = function(message) {
     // 2. [圆角修复] 移除了 kds-card-thumb 上的内联 style
     // 3. 标题: font-size:1.6rem -> font-size:1.25rem
     // 4. 数量/单位字体大小在 kds_style.css 中修改
-    // 5. [KDS Image] 增加 imgUrl 逻辑
-    const imgTag = imgUrl 
-        ? `<img src="${esc(imgUrl)}" alt="${esc(n)}">` 
-        : '';
+    
+    // [GEMINI SECURE IMAGE PROXY FIX (V1.1)]
+    // 检查 imgUrl 是否存在且不为空，如果存在，则构建指向 PHP 代理的 src
+    const imgTag = (imgUrl && imgUrl.trim() !== '')
+        ? `<img src="api/get_image.php?file=${esc(imgUrl)}" alt="${esc(n)}">` 
+        : ''; // 如果 imgUrl 为空或 null，则不生成 <img> 标签
 
     return `
     <div class="col-4">

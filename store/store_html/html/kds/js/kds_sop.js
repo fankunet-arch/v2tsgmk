@@ -21,7 +21,9 @@
  *
  * [GEMINI KDS Image URL FIX]:
  * 1. cardHTML 增加 imgUrl 参数，并渲染 <img> 标签。
- * 2. renderCards 在调用 cardHTML 时传递 r.image_url。
+ *
+ * [GEMINI SECURE IMAGE PROXY FIX (V1.1)]:
+ * 1. cardHTML src now points to 'api/get_image.php' proxy script.
  */
 
 /**
@@ -200,7 +202,7 @@ $(function () {
   // 3) 仅在 header/导航区域内，自动给旗帜打 data-lang（避免误标一切元素）
   (function annotateHeaderFlags() {
     const header =
-      document.querySelector("header, .topbar, .navbar, .header, .app-header") ||
+      document.querySelector("header, .topbar, .navbar, .header, .app-header, .kds-top-nav") || // 增加 .kds-top-nav
       document;
     const cands = header.querySelectorAll("img,svg,span,i,a,button,div");
 
@@ -359,8 +361,8 @@ $(function () {
     if (!code) {
       code = document.createElement("div");
       code.id = "kds_code_big";
-      code.style.cssText =
-        "font-size:48px;font-weight:900;line-height:1;margin:12px 0 6px;";
+      code.className = "kds-cup-number"; // 使用新样式
+      code.style.cssText = "margin: 0.25rem 0;"; // 微调
       host.insertBefore(code, host.firstChild);
     }
 
@@ -368,11 +370,18 @@ $(function () {
       "#kds_product_title, .kds-name-big, [data-role='product-name']"
     );
     if (!name) {
-      name = document.createElement("div");
+      name = document.createElement("h3");
       name.id = "kds_product_title";
-      name.style.cssText =
-        "font-size:24px;font-weight:800;margin:4px 0 10px;";
+      name.style.cssText = "font-weight:bold; margin-bottom: 1rem;";
       code.after(name);
+    }
+    
+    // 确保容器存在
+    let infoContainer = document.getElementById('kds-info-display-container');
+    if (!infoContainer) {
+        infoContainer = document.createElement("div");
+        infoContainer.id = "kds-info-display-container";
+        name.after(infoContainer);
     }
 
     let l1 = document.querySelector(
@@ -381,10 +390,8 @@ $(function () {
     if (!l1) {
       l1 = document.createElement("div");
       l1.id = "kds_line1";
-      l1.className = "kds-info-display"; // 使用 info-display 样式
-      l1.style.cssText =
-        "background:#f3f4f6;border-radius:10px;padding:10px 12px;margin:8px 0;font-weight:600;";
-      name.after(l1);
+      l1.className = "kds-info-display";
+      infoContainer.appendChild(l1);
     }
 
     let l2 = document.querySelector(
@@ -393,13 +400,11 @@ $(function () {
     if (!l2) {
       l2 = document.createElement("div");
       l2.id = "kds_line2";
-      l2.className = "kds-info-display"; // 使用 info-display 样式
-      l2.style.cssText =
-        "background:#f3f4f6;border-radius:10px;padding:10px 12px;margin:8px 0;font-weight:600;";
-      l1.after(l2);
+      l2.className = "kds-info-display";
+      infoContainer.appendChild(l2);
     }
 
-    return { code, name, l1, l2 };
+    return { code, name, l1, l2, infoContainer };
   }
 
   function renderLeft() {
@@ -417,7 +422,7 @@ $(function () {
     // [V7 修复] L1 显示杯型
     const cupTxt = pick(p.cup_name_zh, p.cup_name_es) || "";
     if (nodes.l1) {
-      nodes.l1.style.display = cupTxt ? "" : "none";
+      nodes.l1.style.display = cupTxt ? "block" : "none";
       nodes.l1.textContent = cupTxt;
     }
 
@@ -431,8 +436,13 @@ $(function () {
     if (swt) parts.push(swt);       // 甜度 (例如: 少糖)
     
     if (nodes.l2) {
-      nodes.l2.style.display = parts.length ? "" : "none";
+      nodes.l2.style.display = parts.length ? "block" : "none";
       nodes.l2.textContent = parts.join(" / ");
+    }
+    
+    // 如果两个都隐藏了，隐藏容器
+    if (nodes.infoContainer) {
+         nodes.infoContainer.style.display = (cupTxt || parts.length) ? "block" : "none";
     }
 
     removeLegacyHints();
@@ -453,15 +463,17 @@ $(function () {
   }
 
   function cardHTML(i, name, qty, unit, imgUrl) {
-    // [V9 修复]
+    // [V3 修复]
     // 1. 栅格: col-xxl-6 col-xl-6 ... -> col-4 (强制3列)
     // 2. [圆角修复] 移除了 kds-card-thumb 上的内联 style
     // 3. 标题: font-size:1.6rem -> font-size:1.25rem
     // 4. 数量/单位字体大小在 kds_style.css 中修改
-    // 5. [KDS Image] 增加 imgUrl 逻辑
-    const imgTag = imgUrl 
-        ? `<img src="${esc(imgUrl)}" alt="${esc(name)}">` 
-        : '';
+    
+    // [GEMINI SECURE IMAGE PROXY FIX (V1.1)]
+    // 检查 imgUrl 是否存在且不为空，如果存在，则构建指向 PHP 代理的 src
+    const imgTag = (imgUrl && imgUrl.trim() !== '')
+        ? `<img src="api/get_image.php?file=${esc(imgUrl)}" alt="${esc(name)}">` 
+        : ''; // 如果 imgUrl 为空或 null，则不生成 <img> 标签
         
     return `
       <div class="col-4">
