@@ -368,12 +368,20 @@ if (!function_exists('allocate_invoice_number')) {
                 // 成功！返回前缀和新号码
                 return [$series, $next_number];
             } else {
-                throw new Exception("Failed to bump invoice counter, LAST_INSERT_ID was 0.");
+                // 如果 LAST_INSERT_ID() 返回 0 (例如，在某些复制或特定MySQL版本下)
+                // 我们必须再次查询以获取当前值
+                $stmt_get = $pdo->prepare("SELECT current_number FROM pos_invoice_counters WHERE series = :series AND compliance_system = :system");
+                $stmt_get->execute([':series' => $series, ':system' => $compliance_system_key]);
+                $next_number = (int)$stmt_get->fetchColumn();
+                if ($next_number > 0) {
+                     return [$series, $next_number];
+                }
+                
+                throw new Exception("Failed to bump invoice counter, LAST_INSERT_ID and subsequent SELECT were 0.");
             }
 
         } catch (Throwable $e) {
             // 3. 回退 (Fallback) - 如果 pos_invoice_counters 表不存在或失败
-            // (这不应该发生，但作为保险)
             error_log("CRITICAL: Invoice counter failed, falling back to MAX(number). Error: " . $e->getMessage());
 
             $stmt_max = $pdo->prepare(

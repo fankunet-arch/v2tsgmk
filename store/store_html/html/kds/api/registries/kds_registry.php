@@ -2,7 +2,7 @@
 /**
  * Toptea Store - KDS 统一 API 注册表
  * 迁移所有 store/html/kds/api/ 的逻辑
- * Version: 1.0.0
+ * Version: 1.0.0 (Pre-Phase 3 Migration)
  * Date: 2025-11-08
  */
 

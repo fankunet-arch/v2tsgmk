@@ -224,7 +224,6 @@ function handle_order_submit(PDO $pdo, array $config, array $input_data): void {
             json_encode($custom, JSON_UNESCAPED_UNICODE)
         ]);
 
-        // (第 3b 步将修改此部分)
         $customizations_parts = [];
         if (!empty($custom['ice'])) $customizations_parts[] = 'Ice:' . $custom['ice'] . '%';
         if (!empty($custom['sugar'])) $customizations_parts[] = 'Sugar:' . $custom['sugar'] . '%';
