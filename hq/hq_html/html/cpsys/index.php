@@ -6,6 +6,9 @@
  * - Adds minimal handlers/data for: expiry_management, pos_eod_reports, pos_shift_review
  * - Safe fallbacks for commonly-missing helper functions
  * - No closing "?>" to avoid stray output
+ *
+ * [GEMINI DASHBOARD V1.0]
+ * - Updated 'dashboard' case to load all necessary data for the new widgets.
  */
 
 declare(strict_types=1);
@@ -222,8 +225,21 @@ if (($_SESSION['role_id'] ?? null) !== ROLE_SUPER_ADMIN
 
 switch ($page) {
     case 'dashboard':
+        // --- [GEMINI DASHBOARD V1.0] START: Load data for dashboard ---
         $page_title   = '仪表盘';
         $content_view = APP_PATH . '/views/cpsys/dashboard_view.php';
+        
+        // 1. Get KPIs
+        $kpi_data = getDashboardKpis($pdo);
+        // 2. Get Pending Tasks (re-use existing function)
+        $pending_shift_reviews_count = getPendingShiftReviewCount($pdo);
+        // 3. Get Low Stock Alerts
+        $low_stock_alerts = getLowStockAlerts($pdo, 10); // 阈值设为10
+        // 4. Get Sales Trend
+        $sales_trend = getSalesTrendLast7Days($pdo);
+        // 5. Get Top Products
+        $top_products = getTopSellingProductsToday($pdo);
+        // --- [GEMINI DASHBOARD V1.0] END ---
         break;
 
     /* RMS - 产品 */
@@ -363,6 +379,16 @@ switch ($page) {
         $content_view = APP_PATH . '/views/cpsys/pos_addon_management_view.php';
         $page_js      = 'pos_addon_management.js';
         break;
+
+    /* --- [新功能] START: 产品物料清单 (Product Availability) --- */
+    case 'product_availability':
+        $page_title   = 'POS 管理 - 物料清单与上架';
+        // 视图需要物料列表来进行搜索
+        $material_options = getAllMaterials($pdo);
+        $content_view = APP_PATH . '/views/cpsys/product_availability_view.php';
+        $page_js      = 'product_availability.js';
+        break;
+    /* --- [新功能] END --- */
 
     /* POS 发票/报告 */
     case 'pos_invoice_list':

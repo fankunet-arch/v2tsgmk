@@ -392,3 +392,48 @@ select[multiple]:focus {
     color: #f8f9fa; /* Ensure text is bright */
 }
 /* --- End of KDS SOP Rule List Beautification --- */
+
+/* --- [GEMINI L3 MENU] START: Styles for 3-Level Menu --- */
+.sidebar .nav-link[data-bs-toggle="collapse"] {
+    position: relative;
+    /* [GEMINI BADGE BUBBLE FIX] Add padding for badge */
+    padding-right: 2.5rem;
+}
+/* L2 Toggle Icon */
+.sidebar .nav-link[data-bs-toggle="collapse"]::after {
+    content: '\f231'; /* bi-caret-right-fill */
+    font-family: 'bootstrap-icons';
+    font-weight: bold;
+    position: absolute;
+    right: 1rem;
+    transition: transform 0.2s ease-in-out;
+}
+/* L2 Toggled-Open Icon */
+.sidebar .nav-link[data-bs-toggle="collapse"]:not(.collapsed)::after {
+    transform: rotate(90deg); /* bi-caret-down-fill */
+}
+/* L2 Active Group Header (when a child L3 is active) */
+.sidebar .nav-link.active-l2-group {
+    color: #fff;
+    background-color: rgba(237, 119, 98, 0.7); /* Muted brand color */
+}
+
+/* L3 Container */
+.l3-nav .nav-link {
+    padding-top: .35rem;
+    padding-bottom: .35rem;
+    padding-left: 1.5rem; /* Further indent L3 links */
+    font-size: 0.9rem;
+    color: #adb5bd;
+}
+.l3-nav .nav-link:hover {
+    color: #fff;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+/* L3 Active Link */
+.l3-nav .nav-link.active {
+    background-color: transparent;
+    color: #fff;
+    font-weight: 600;
+}
+/* --- [GEMINI L3 MENU] END --- */

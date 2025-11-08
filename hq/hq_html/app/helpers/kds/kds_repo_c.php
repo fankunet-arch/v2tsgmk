@@ -311,3 +311,140 @@ function getPendingShiftReviews(PDO $pdo): array {
         return [];
     }
 }
+
+// --- [GEMINI DASHBOARD V1.0] START: New Dashboard Helper Functions ---
+
+/**
+ * 获取仪表盘顶行的关键指标 (KPIs)
+ */
+function getDashboardKpis(PDO $pdo): array {
+    $today_start = date('Y-m-d 00:00:00');
+    $today_end = date('Y-m-d 23:59:59');
+
+    // 1. 今日总销售额 和 总订单数
+    $stmt_sales = $pdo->prepare("
+        SELECT 
+            COALESCE(SUM(final_total), 0) AS total_sales,
+            COUNT(id) AS total_orders
+        FROM pos_invoices 
+        WHERE issued_at BETWEEN :start AND :end AND status = 'ISSUED'
+    ");
+    $stmt_sales->execute([':start' => $today_start, ':end' => $today_end]);
+    $sales_data = $stmt_sales->fetch(PDO::FETCH_ASSOC);
+
+    // 2. 今日新增会员
+    $stmt_members = $pdo->prepare("
+        SELECT COUNT(id) 
+        FROM pos_members 
+        WHERE created_at BETWEEN :start AND :end AND deleted_at IS NULL
+    ");
+    $stmt_members->execute([':start' => $today_start, ':end' => $today_end]);
+    $new_members = $stmt_members->fetchColumn();
+
+    // 3. 活跃门店数
+    $stmt_stores = $pdo->query("
+        SELECT COUNT(id) 
+        FROM kds_stores 
+        WHERE is_active = 1 AND deleted_at IS NULL
+    ");
+    $active_stores = $stmt_stores->fetchColumn();
+
+    return [
+        'total_sales' => (float)($sales_data['total_sales'] ?? 0),
+        'total_orders' => (int)($sales_data['total_orders'] ?? 0),
+        'new_members' => (int)($new_members ?? 0),
+        'active_stores' => (int)($active_stores ?? 0)
+    ];
+}
+
+/**
+ * 获取总仓低库存预警
+ */
+function getLowStockAlerts(PDO $pdo, int $threshold = 10): array {
+    $sql = "
+        SELECT 
+            m.id, 
+            mt.material_name,
+            ws.quantity,
+            ut.unit_name AS base_unit_name
+        FROM expsys_warehouse_stock ws
+        JOIN kds_materials m ON ws.material_id = m.id
+        JOIN kds_material_translations mt ON m.id = mt.material_id AND mt.language_code = 'zh-CN'
+        JOIN kds_unit_translations ut ON m.base_unit_id = ut.unit_id AND ut.language_code = 'zh-CN'
+        WHERE ws.quantity <= :threshold 
+          AND m.deleted_at IS NULL
+          AND m.material_type != 'CONSUMABLE'
+        ORDER BY ws.quantity ASC
+        LIMIT 10
+    ";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([':threshold' => $threshold]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/**
+ * 获取近7日销售趋势
+ */
+function getSalesTrendLast7Days(PDO $pdo): array {
+    // 准备日期标签
+    $labels = [];
+    $data_map = [];
+    for ($i = 6; $i >= 0; $i--) {
+        $date_str = date('Y-m-d', strtotime("-$i days"));
+        $labels[] = $date_str;
+        $data_map[$date_str] = 0.0;
+    }
+    
+    // 查询数据
+    $start_date = $labels[0] . ' 00:00:00';
+    $end_date = $labels[6] . ' 23:59:59';
+    
+    $sql = "
+        SELECT 
+            DATE(issued_at) AS sale_date,
+            SUM(final_total) AS daily_sales
+        FROM pos_invoices
+        WHERE issued_at BETWEEN :start AND :end AND status = 'ISSUED'
+        GROUP BY sale_date
+        ORDER BY sale_date ASC
+    ";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([':start' => $start_date, ':end' => $end_date]);
+    
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        if (isset($data_map[$row['sale_date']])) {
+            $data_map[$row['sale_date']] = (float)$row['daily_sales'];
+        }
+    }
+    
+    return [
+        'labels' => $labels,
+        'data' => array_values($data_map)
+    ];
+}
+
+/**
+ * 获取今日热销产品 Top 5
+ */
+function getTopSellingProductsToday(PDO $pdo): array {
+    $today_start = date('Y-m-d 00:00:00');
+    $today_end = date('Y-m-d 23:59:59');
+
+    $sql = "
+        SELECT 
+            pi.item_name_zh,
+            SUM(pi.quantity) AS total_quantity
+        FROM pos_invoice_items pi
+        JOIN pos_invoices p ON pi.invoice_id = p.id
+        WHERE p.issued_at BETWEEN :start AND :end AND p.status = 'ISSUED'
+        GROUP BY pi.item_name_zh
+        ORDER BY total_quantity DESC
+        LIMIT 5
+    ";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([':start' => $today_start, ':end' => $today_end]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// --- [GEMINI DASHBOARD V1.0] END ---
+}

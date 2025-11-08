@@ -2,11 +2,15 @@
 /**
  * Toptea HQ - CPSYS API 注册表 (BMS - POS Management)
  * 注册 POS 菜单、商品、会员、促销等资源
- * Version: 1.2.001 (V1.6 Path Fix)
- * Date: 2025-11-05
+ * Version: 1.2.005 (Feature: Add product_code to availability list)
+ * Date: 2025-11-08
  *
  * [GEMINI FIX]: 路径从 ../../../ (错误) 修正为 ../../../../ (正确)
  * [GEMINI FIX]: Corrected realpath() to ../../../
+ * [GEMINI FIX V1.2.002]: Fixed "Column 'id' is ambiguous" in handle_menu_get_with_materials.
+ * [GEMINI FIX V1.2.003]: Fixed "HY093: Invalid parameter number" by replacing str_replace with safe query concatenation and using array_values().
+ * [GEMINI FIX V1.2.004]: Fixed "Missing 'id' parameter" by re-adding $pid to the $product object in handle_menu_get_with_materials.
+ * [GEMINI FIX V1.2.005]: Added `mi.product_code` to the SELECT list in `handle_menu_get_with_materials` per user request.
  */
 
 require_once realpath(__DIR__ . '/../../../../app/helpers/kds_helper.php');
@@ -95,6 +99,122 @@ function handle_menu_item_delete(PDO $pdo, array $config, array $input_data): vo
     $pdo->commit();
     json_ok(null, '商品及其所有规格已成功删除。');
 }
+
+/**
+* [新功能] Handler: 获取带物料清单的产品列表 (L1+L3)
+*/
+function handle_menu_get_with_materials(PDO $pdo, array $config, array $input_data): void {
+    $search_material_id = $_GET['material_id'] ?? null;
+
+    // 1. 获取所有 POS 菜单项及其关联的 KDS Product ID
+    $sql = "
+        SELECT
+            mi.id, mi.product_code, mi.name_zh, mi.name_es, mi.is_active,
+            p.id AS kds_product_id
+        FROM pos_menu_items mi
+        LEFT JOIN kds_products p ON mi.product_code = p.product_code AND p.deleted_at IS NULL
+        WHERE mi.deleted_at IS NULL
+        ORDER BY mi.sort_order ASC, mi.id ASC
+    ";
+    $products = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC | PDO::FETCH_UNIQUE);
+
+    // 2. 准备物料查询语句
+    $sql_materials = "
+        (SELECT DISTINCT material_id FROM kds_product_recipes WHERE product_id = ?)
+        UNION
+        (SELECT DISTINCT material_id FROM kds_recipe_adjustments WHERE product_id = ?)
+    ";
+    $stmt_materials = $pdo->prepare($sql_materials);
+
+    // 3. 准备物料名称查询语句 [FIX START: HY093]
+    $sql_material_names_base = "
+        SELECT m.id, mt.material_name AS name_zh
+        FROM kds_materials m
+        JOIN kds_material_translations mt ON m.id = mt.material_id AND mt.language_code = 'zh-CN'
+        WHERE m.deleted_at IS NULL AND m.id IN
+    ";
+    // [FIX END]
+
+    $results = [];
+    $material_name_cache = []; // 缓存物料名称
+
+    foreach ($products as $pid => $product) {
+        
+        // --- [CRITICAL FIX V1.2.004] ---
+        // 将 $pid (即 mi.id) 重新注入到 $product 数组中
+        $product['id'] = $pid;
+        // --- [END FIX] ---
+
+        $kds_pid = $product['kds_product_id'];
+        $product['materials'] = [];
+        $material_ids = [];
+
+        if ($kds_pid) {
+            $stmt_materials->execute([$kds_pid, $kds_pid]);
+            $material_ids = $stmt_materials->fetchAll(PDO::FETCH_COLUMN);
+        }
+
+        // 4. (可选) 如果按物料搜索，则过滤
+        if ($search_material_id !== null && !in_array($search_material_id, $material_ids)) {
+            continue; // 跳过不包含该物料的产品
+        }
+
+        if (!empty($material_ids)) {
+            // 批量获取物料名称
+            $ids_to_fetch = array_diff($material_ids, array_keys($material_name_cache));
+            if (!empty($ids_to_fetch)) {
+                
+                // [FIX START: HY093]
+                // 1. 创建占位符
+                $in_placeholders = implode(',', array_fill(0, count($ids_to_fetch), '?'));
+                // 2. 安全地构建 SQL
+                $sql_to_prepare = $sql_material_names_base . " ( " . $in_placeholders . " )";
+                // 3. 准备新语句
+                $stmt_material_names_dynamic = $pdo->prepare($sql_to_prepare);
+                
+                // 4. [CRITICAL FIX] 使用 array_values() 重置键名
+                $stmt_material_names_dynamic->execute(array_values($ids_to_fetch));
+                
+                // 5. 抓取 (fetch)
+                while ($mat = $stmt_material_names_dynamic->fetch(PDO::FETCH_ASSOC)) {
+                    $material_name_cache[$mat['id']] = $mat['name_zh'];
+                }
+                $stmt_material_names_dynamic->closeCursor();
+                // [FIX END]
+            }
+
+            // 组装物料列表
+            foreach ($material_ids as $mid) {
+                $product['materials'][] = [
+                    'id' => $mid,
+                    'name_zh' => $material_name_cache[$mid] ?? 'ID:'.$mid.' (已删除)'
+                ];
+            }
+        }
+
+        $results[] = $product;
+    }
+
+    json_ok($results, '产品物料清单加载成功。');
+}
+
+/**
+* [新功能] Handler: 切换 POS 菜单项的上架状态
+*/
+function handle_menu_toggle_active(PDO $pdo, array $config, array $input_data): void {
+    $id = $input_data['id'] ?? null;
+    $is_active = isset($input_data['is_active']) ? (int)$input_data['is_active'] : null;
+
+    if ($id === null || $is_active === null) {
+        json_error('缺少 "id" 或 "is_active" 参数。', 400);
+    }
+
+    $stmt = $pdo->prepare("UPDATE pos_menu_items SET is_active = ? WHERE id = ?");
+    $stmt->execute([$is_active, (int)$id]);
+
+    json_ok(['id' => $id, 'is_active' => $is_active], '产品状态已更新。');
+}
+
 
 // --- 处理器: POS 规格 (pos_item_variants) ---
 function handle_variant_get(PDO $pdo, array $config, array $input_data): void {
@@ -567,7 +687,15 @@ return [
     ],
     'pos_menu_items' => [
         'table' => 'pos_menu_items', 'pk' => 'id', 'soft_delete_col' => 'deleted_at', 'auth_role' => ROLE_SUPER_ADMIN,
-        'custom_actions' => [ 'get' => 'handle_menu_item_get', 'save' => 'handle_menu_item_save', 'delete' => 'handle_menu_item_delete', ],
+        'custom_actions' => [
+            'get' => 'handle_menu_item_get',
+            'save' => 'handle_menu_item_save',
+            'delete' => 'handle_menu_item_delete',
+            // --- [新功能] START ---
+            'get_with_materials' => 'handle_menu_get_with_materials',
+            'toggle_active' => 'handle_menu_toggle_active',
+            // --- [新功能] END ---
+        ],
     ],
     'pos_item_variants' => [
         'table' => 'pos_item_variants', 'pk' => 'id', 'soft_delete_col' => 'deleted_at', 'auth_role' => ROLE_SUPER_ADMIN,
@@ -611,4 +739,3 @@ return [
         'custom_actions' => [ 'review' => 'handle_shift_review', ],
     ],
 ];
-

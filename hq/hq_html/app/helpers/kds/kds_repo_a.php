@@ -3,6 +3,14 @@
  * KDS Repo A - 数据仓库：物料 / 单位 / 门店 / 会员 / 促销 / 模板
  * 注意：本文件仅提供“查询/只读/简单写”仓库函数；不包含 API 处理器；不包含 return。
  * 末尾不使用 "?>"，避免输出空白导致 header 已发送。
+ *
+ * [GEMINI 500-FATAL-FIX (V1.0.1)]
+ * - 删除了与 kds_repo_c.php 中重复定义的4个函数：
+ * - getAllSweetnessOptions
+ * - getAllIceOptions
+ * - getAllCups
+ * - getAllStatuses
+ * (kds_repo_c.php 中的版本是正确的，包含双语支持)
  */
 
 /* ---------- 通用：编号工具 ---------- */
@@ -256,4 +264,95 @@ function getAllPrintTemplates(PDO $pdo): array {
         }
         throw $e;
     }
+}
+
+/* ---------- [GEMINI 500-FATAL-FIX] 移除的函数 ---------- */
+// getAllSweetnessOptions, getAllIceOptions, getAllCups, getAllStatuses
+// (这些函数在 kds_repo_c.php 中被重新定义，导致冲突)
+
+/* ---------- POS 菜单 (遗留在此) ---------- */
+function getAllMenuItems(PDO $pdo): array {
+    $sql = "
+        SELECT 
+            mi.id,
+            mi.name_zh,
+            mi.sort_order,
+            mi.is_active,
+            pc.name_zh AS category_name_zh,
+            GROUP_CONCAT(pv.variant_name_zh SEPARATOR ', ') AS variants
+        FROM pos_menu_items mi
+        LEFT JOIN pos_categories pc ON mi.pos_category_id = pc.id
+        LEFT JOIN pos_item_variants pv ON mi.id = pv.menu_item_id AND pv.deleted_at IS NULL
+        WHERE mi.deleted_at IS NULL
+        GROUP BY mi.id
+        ORDER BY pc.sort_order ASC, mi.sort_order ASC, mi.id ASC
+    ";
+    $stmt = $pdo->query($sql);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function getMenuItemById(PDO $pdo, int $id) {
+    $stmt = $pdo->prepare("SELECT id, name_zh FROM pos_menu_items WHERE id = ? AND deleted_at IS NULL");
+    $stmt->execute([$id]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+function getAllVariantsByMenuItemId(PDO $pdo, int $menu_item_id): array {
+    // --- START: [GEMINI 500_ERROR_FIX] ---
+    // 1. 修复了 JOIN kds_product_translations pt ON p.id ... 的歧义性
+    // 2. 添加了 COALESCE，防止 $variant['product_sku'] 或 $variant['recipe_name_zh'] 为 NULL，
+    //    这会导致 view 文件中 `NULL . ' - ' . NULL` 尝试连接空值，引发 500 错误。
+    $sql = "
+        SELECT 
+            pv.id,
+            pv.variant_name_zh,
+            pv.price_eur,
+            pv.sort_order,
+            pv.is_default,
+            COALESCE(p.product_code, 'N/A') AS product_sku,
+            COALESCE(pt.product_name, '未关联配方') AS recipe_name_zh,
+            p.id AS product_id,
+            pv.cup_id
+        FROM pos_item_variants pv
+        INNER JOIN pos_menu_items mi ON pv.menu_item_id = mi.id
+        LEFT JOIN kds_products p ON mi.product_code = p.product_code AND p.deleted_at IS NULL
+        LEFT JOIN kds_product_translations pt ON p.id = pt.product_id AND pt.language_code = 'zh-CN'
+        WHERE pv.menu_item_id = ? AND pv.deleted_at IS NULL
+        ORDER BY pv.sort_order ASC, pv.id ASC
+    ";
+    // --- END: [GEMINI 500_ERROR_FIX] ---
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$menu_item_id]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function getAllMenuItemsForSelect(PDO $pdo): array {
+    $sql = "SELECT id, name_zh FROM pos_menu_items WHERE deleted_at IS NULL AND is_active = 1 ORDER BY name_zh ASC";
+    return $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/* ---------- 总部用户 (遗留在此) ---------- */
+function getAllUsers(PDO $pdo): array {
+    $sql = "
+        SELECT 
+            u.id, u.username, u.display_name, u.email, u.is_active, u.last_login_at, r.role_name
+        FROM cpsys_users u
+        JOIN cpsys_roles r ON u.role_id = r.id
+        WHERE u.deleted_at IS NULL
+        ORDER BY u.id ASC
+    ";
+    $stmt = $pdo->query($sql);
+    return $stmt->fetchAll();
+}
+
+function getAllRoles(PDO $pdo): array {
+    $stmt = $pdo->query("SELECT id, role_name FROM cpsys_roles ORDER BY id ASC");
+    return $stmt->fetchAll();
+}
+
+function getUserById(PDO $pdo, int $id) {
+    $stmt = $pdo->prepare("SELECT id, username, display_name, email, role_id, is_active FROM cpsys_users WHERE id = ? AND deleted_at IS NULL");
+    $stmt->execute([$id]);
+    return $stmt->fetch();
 }

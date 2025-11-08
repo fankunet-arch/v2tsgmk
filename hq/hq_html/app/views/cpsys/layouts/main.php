@@ -2,24 +2,20 @@
 /**
  * Toptea HQ - cpsys
  * Main Layout File
- * Engineer: Gemini | Date: 2025-11-05 | Revision: 1.19.006 (Add KDS SOP Rules Menu)
+ * Engineer: Gemini | Date: 2025-11-08
+ * Revision: 1.20.1 (Badge Bubbling)
  *
- * [GEMINI KDS_SOP_RULES]:
- * 1. Added 'kds_sop_rules' to $systemPages array.
- * 2. Added new menu link for 'KDS SOP 解析规则'.
+ * [GEMINI L3 MENU]:
+ * 1. Added L2 page groups: $posMenuPages, $posOpsPages, $posMemberPages.
+ * 2. Updated $posPages to be the union of these groups.
+ * 3. Rebuilt the HTML for the #pos-submenu to support L3 navigation.
  *
- * [GEMINI GHOST_SHIFT_FIX]:
- * 1. Changed sidebar class from 'vh-100' to 'min-vh-100' to fix 
- * background cutoff on long menu scroll.
+ * [GEMINI BADGE BUBBLE FIX V1.20.1]:
+ * 1. Added d-flex layout and notification badge to L1 "POS 管理" link.
+ * 2. Added d-flex layout and notification badge to L2 "运营与报表" link.
  *
- * [GEMINI GHOST_SHIFT_FIX]:
- * 1. Added 'pos_shift_review' to $posPages array.
- * 2. Added new menu link for '异常班次复核' with notification badge.
- * 3. Fetched $pending_shift_reviews_count for the badge.
- *
- * [GEMINI SIF_DR_FIX]:
- * 1. Added 'sif_declaration' to $systemPages array.
- * 2. Added new menu link for '合规性声明 (SIF)' under 系统设置.
+ * [GEMINI DASHBOARD V1.0]:
+ * 1. Added Chart.js CDN to <head> for dashboard charts.
  */
 $page_title = $page_title ?? 'TopTea HQ';
 $page = $_GET['page'] ?? 'dashboard';
@@ -29,10 +25,16 @@ $pending_shift_reviews_count = getPendingShiftReviewCount($pdo);
 
 // Updated page groups for menu highlighting
 $rmsPages = ['rms_product_management', 'rms_global_rules']; // (V2.2) Added global rules
-// [GEMINI GHOST_SHIFT_FIX] Added 'pos_shift_review'
-$posPages = ['pos_menu_management', 'pos_variants_management', 'pos_category_management', 'pos_invoice_list', 'pos_invoice_detail', 'pos_promotion_management', 'pos_eod_reports', 'pos_member_level_management', 'pos_member_management', 'pos_member_settings', 'pos_point_redemption_rules', 'pos_addon_management', 'pos_shift_review'];
+
+// [GEMINI L3 MENU] START: Define L2/L3 page groups
+$posMenuPages = ['pos_menu_management', 'pos_variants_management', 'pos_category_management', 'pos_addon_management', 'product_availability'];
+$posOpsPages = ['pos_invoice_list', 'pos_invoice_detail', 'pos_eod_reports', 'pos_shift_review'];
+$posMemberPages = ['pos_promotion_management', 'pos_member_level_management', 'pos_member_management', 'pos_member_settings', 'pos_point_redemption_rules'];
+// Union of all POS pages for L1 highlighting
+$posPages = array_merge($posMenuPages, $posOpsPages, $posMemberPages);
+// [GEMINI L3 MENU] END
+
 $dictionaryPages = ['cup_management', 'material_management', 'unit_management', 'ice_option_management', 'sweetness_option_management', 'product_status_management'];
-// [GEMINI SIF_DR_FIX] & [GEMINI KDS_SOP_RULES]
 $systemPages = ['user_management', 'store_management', 'kds_user_management', 'pos_print_template_management', 'pos_print_template_variables', 'sif_declaration', 'kds_sop_rules'];
 $stockPages = ['warehouse_stock_management', 'stock_allocation', 'store_stock_view'];
 ?>
@@ -46,7 +48,8 @@ $stockPages = ['warehouse_stock_management', 'stock_allocation', 'store_stock_vi
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="css/style.css?v=<?php echo time(); ?>">
 
-</head>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    </head>
 <body>
     <div class="d-flex">
         <nav class="sidebar min-vh-100 p-3">
@@ -91,30 +94,71 @@ $stockPages = ['warehouse_stock_management', 'stock_allocation', 'store_stock_vi
                 </li>
 				<?php if (($_SESSION['role_id'] ?? null) === ROLE_SUPER_ADMIN): ?>
                     <li class="nav-item">
-                        <a class="nav-link collapsed <?php echo (in_array($page, $posPages)) ? 'active' : ''; ?>" href="#" data-bs-toggle="collapse" data-bs-target="#pos-submenu" aria-expanded="<?php echo (in_array($page, $posPages)) ? 'true' : 'false'; ?>"><i class="bi bi-display me-2"></i>POS 管理</a>
+                        <a class="nav-link collapsed <?php echo (in_array($page, $posPages)) ? 'active' : ''; ?> d-flex justify-content-between align-items-center" href="#" data-bs-toggle="collapse" data-bs-target="#pos-submenu" aria-expanded="<?php echo (in_array($page, $posPages)) ? 'true' : 'false'; ?>">
+                            <span><i class="bi bi-display me-2"></i>POS 管理</span>
+                            <?php if ($pending_shift_reviews_count > 0): ?>
+                                <span class="badge text-bg-danger rounded-pill"><?php echo $pending_shift_reviews_count; ?></span>
+                            <?php endif; ?>
+                        </a>
+                        
                         <div class="collapse <?php echo (in_array($page, $posPages)) ? 'show' : ''; ?>" id="pos-submenu">
                             <ul class="nav flex-column ps-4">
-                                <li class="nav-item"><a class="nav-link <?php echo (in_array($page, ['pos_menu_management', 'pos_variants_management'])) ? 'active' : ''; ?>" href="index.php?page=pos_menu_management">菜单管理</a></li>
-                                <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_category_management') ? 'active' : ''; ?>" href="index.php?page=pos_category_management">POS分类管理</a></li>
-                                <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_addon_management') ? 'active' : ''; ?>" href="index.php?page=pos_addon_management">加料管理</a></li>
-                                <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_promotion_management') ? 'active' : ''; ?>" href="index.php?page=pos_promotion_management">营销活动管理</a></li>
-                                <li class="nav-item"><a class="nav-link <?php echo (in_array($page, ['pos_invoice_list', 'pos_invoice_detail'])) ? 'active' : ''; ?>" href="index.php?page=pos_invoice_list">票据查询</a></li>
-                                <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_eod_reports') ? 'active' : ''; ?>" href="index.php?page=pos_eod_reports">日结报告</a></li>
+                                
                                 <li class="nav-item">
-                                    <a class="nav-link d-flex justify-content-between align-items-center <?php echo ($page === 'pos_shift_review') ? 'active' : ''; ?>" href="index.php?page=pos_shift_review">
-                                        异常班次复核
+                                    <a class="nav-link collapsed <?php echo (in_array($page, $posMenuPages)) ? 'active-l2-group' : ''; ?>" href="#" data-bs-toggle="collapse" data-bs-target="#pos-menu-submenu" aria-expanded="<?php echo (in_array($page, $posMenuPages)) ? 'true' : 'false'; ?>">
+                                        菜单与商品
+                                    </a>
+                                    <div class="collapse l3-nav <?php echo (in_array($page, $posMenuPages)) ? 'show' : ''; ?>" id="pos-menu-submenu">
+                                        <ul class="nav flex-column ps-2">
+                                            <li class="nav-item"><a class="nav-link <?php echo (in_array($page, ['pos_menu_management', 'pos_variants_management'])) ? 'active' : ''; ?>" href="index.php?page=pos_menu_management">菜单管理</a></li>
+                                            <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_category_management') ? 'active' : ''; ?>" href="index.php?page=pos_category_management">POS分类管理</a></li>
+                                            <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_addon_management') ? 'active' : ''; ?>" href="index.php?page=pos_addon_management">加料管理</a></li>
+                                            <li class="nav-item"><a class="nav-link <?php echo ($page === 'product_availability') ? 'active' : ''; ?>" href="index.php?page=product_availability">物料清单与上架</a></li>
+                                        </ul>
+                                    </div>
+                                </li>
+                                
+                                <li class="nav-item">
+                                    <a class="nav-link collapsed <?php echo (in_array($page, $posOpsPages)) ? 'active-l2-group' : ''; ?> d-flex justify-content-between align-items-center" href="#" data-bs-toggle="collapse" data-bs-target="#pos-ops-submenu" aria-expanded="<?php echo (in_array($page, $posOpsPages)) ? 'true' : 'false'; ?>">
+                                        <span>运营与报表</span>
                                         <?php if ($pending_shift_reviews_count > 0): ?>
                                             <span class="badge text-bg-danger rounded-pill"><?php echo $pending_shift_reviews_count; ?></span>
                                         <?php endif; ?>
                                     </a>
+                                    <div class="collapse l3-nav <?php echo (in_array($page, $posOpsPages)) ? 'show' : ''; ?>" id="pos-ops-submenu">
+                                        <ul class="nav flex-column ps-2">
+                                            <li class="nav-item"><a class="nav-link <?php echo (in_array($page, ['pos_invoice_list', 'pos_invoice_detail'])) ? 'active' : ''; ?>" href="index.php?page=pos_invoice_list">票据查询</a></li>
+                                            <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_eod_reports') ? 'active' : ''; ?>" href="index.php?page=pos_eod_reports">日结报告</a></li>
+                                            <li class="nav-item">
+                                                <a class="nav-link d-flex justify-content-between align-items-center <?php echo ($page === 'pos_shift_review') ? 'active' : ''; ?>" href="index.php?page=pos_shift_review">
+                                                    异常班次复核
+                                                    <?php if ($pending_shift_reviews_count > 0): ?>
+                                                        <span class="badge text-bg-danger rounded-pill"><?php echo $pending_shift_reviews_count; ?></span>
+                                                    <?php endif; ?>
+                                                </a>
+                                            </li>
+                                        </ul>
+                                    </div>
                                 </li>
-                                <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_member_level_management') ? 'active' : ''; ?>" href="index.php?page=pos_member_level_management">会员等级管理</a></li>
-                                <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_member_management') ? 'active' : ''; ?>" href="index.php?page=pos_member_management">会员列表管理</a></li>
-                                <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_member_settings') ? 'active' : ''; ?>" href="index.php?page=pos_member_settings">会员积分设置</a></li>
-                                <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_point_redemption_rules') ? 'active' : ''; ?>" href="index.php?page=pos_point_redemption_rules">积分兑换规则</a></li>
+
+                                <li class="nav-item">
+                                    <a class="nav-link collapsed <?php echo (in_array($page, $posMemberPages)) ? 'active-l2-group' : ''; ?>" href="#" data-bs-toggle="collapse" data-bs-target="#pos-member-submenu" aria-expanded="<?php echo (in_array($page, $posMemberPages)) ? 'true' : 'false'; ?>">
+                                        会员与营销
+                                    </a>
+                                    <div class="collapse l3-nav <?php echo (in_array($page, $posMemberPages)) ? 'show' : ''; ?>" id="pos-member-submenu">
+                                        <ul class="nav flex-column ps-2">
+                                            <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_promotion_management') ? 'active' : ''; ?>" href="index.php?page=pos_promotion_management">营销活动管理</a></li>
+                                            <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_member_management') ? 'active' : ''; ?>" href="index.php?page=pos_member_management">会员列表管理</a></li>
+                                            <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_member_level_management') ? 'active' : ''; ?>" href="index.php?page=pos_member_level_management">会员等级管理</a></li>
+                                            <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_member_settings') ? 'active' : ''; ?>" href="index.php?page=pos_member_settings">会员积分设置</a></li>
+                                            <li class="nav-item"><a class="nav-link <?php echo ($page === 'pos_point_redemption_rules') ? 'active' : ''; ?>" href="index.php?page=pos_point_redemption_rules">积分兑换规则</a></li>
+                                        </ul>
+                                    </div>
+                                </li>
+
                             </ul>
                         </div>
-                    </li>
+                        </li>
                     <li class="nav-item">
                         <a class="nav-link collapsed <?php echo (in_array($page, $dictionaryPages)) ? 'active' : ''; ?>" href="#" data-bs-toggle="collapse" data-bs-target="#dictionary-submenu" aria-expanded="<?php echo (in_array($page, $dictionaryPages)) ? 'true' : 'false'; ?>"><i class="bi bi-card-checklist me-2"></i>字典管理</a>
                         <div class="collapse <?php echo (in_array($page, $dictionaryPages)) ? 'show' : ''; ?>" id="dictionary-submenu">
