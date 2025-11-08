@@ -4,6 +4,10 @@
  * Purpose: Provide getUnitById, getMaterialById, getNextAvailableCustomCode
  * to avoid undefined-function fatals during Units / Materials operations.
  * Date: 2025-11-07 (Fix: Add image_url to getMaterialById)
+ *
+ * [GEMINI 500-FATAL-FIX (V3.0.0)]
+ * - Added !function_exists() wrappers to all functions to prevent
+ * redeclaration fatal errors from kds_repo_a.php.
  */
 
 if (!function_exists('getUnitById')) {
